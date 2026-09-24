@@ -47,6 +47,7 @@ export interface ScenarioStoreState {
   // Actions
   resetStore: () => void;
   createPage: () => Page;
+  updatePage: (pageId: string, updates: Partial<Page>) => void;
   deletePage: (pageId: string) => void;
   setActivePage: (pageId: string) => void;
   setScenarioMetadata: (meta: Partial<Scenario>) => void;
@@ -126,6 +127,12 @@ export const useScenarioStore = create<ScenarioStoreState>((set, get) => ({
       activePageId: newPage.id,
     }));
     return newPage;
+  },
+
+  updatePage: (pageId: string, updates: Partial<Page>) => {
+    set((state) => ({
+      pages: state.pages.map((p) => (p.id === pageId ? { ...p, ...updates } : p)),
+    }));
   },
 
   deletePage: (pageId: string) => {

@@ -4,7 +4,7 @@ import React from 'react';
 import { Page, useScenarioStore } from '@/store/scenarioStore';
 import { EntityCard } from './EntityCard';
 import { ThemeSkin, THEME_SKINS } from './themeSkin';
-import { Columns2, Layout, Plus, Palette } from 'lucide-react';
+import { Columns2, Layout, Palette } from 'lucide-react';
 
 interface PageCanvasProps {
   page: Page;
@@ -13,19 +13,15 @@ interface PageCanvasProps {
 export const PageCanvas: React.FC<PageCanvasProps> = ({ page }) => {
   const store = useScenarioStore();
   const placements = store.placements[page.id] || [];
-  const skin = THEME_SKINS[page.themeSkin];
 
   const handleTogglePageColumns = () => {
-    const nextCol = page.columnCount === 1 ? 2 : 1;
-    store.createPage(); // trigger re-render if needed
+    store.updatePage(page.id, {
+      columnCount: page.columnCount === 1 ? 2 : 1,
+    });
   };
 
   const handleSkinChange = (newSkin: ThemeSkin) => {
-    // updates page skin
-    const updatedPages = store.pages.map((p) =>
-      p.id === page.id ? { ...p, themeSkin: newSkin } : p
-    );
-    useScenarioStore.setState({ pages: updatedPages });
+    store.updatePage(page.id, { themeSkin: newSkin });
   };
 
   return (
@@ -59,12 +55,7 @@ export const PageCanvas: React.FC<PageCanvasProps> = ({ page }) => {
 
           {/* Column Toggle */}
           <button
-            onClick={() => {
-              const updated = store.pages.map((p) =>
-                p.id === page.id ? { ...p, columnCount: (p.columnCount === 1 ? 2 : 1) as 1 | 2 } : p
-              );
-              useScenarioStore.setState({ pages: updated });
-            }}
+            onClick={handleTogglePageColumns}
             className="flex items-center gap-1 px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200"
             title="Toggle between 1-column and 2-column page layout"
           >
