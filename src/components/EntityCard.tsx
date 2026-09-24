@@ -9,13 +9,14 @@ import {
   Square,
   Copy,
   Trash2,
-  Maximize2,
-  Minimize2,
   Columns2,
   ChevronDown,
   ChevronUp,
   AlertCircle,
-  Edit3,
+  Dice5,
+  MessageSquareQuote,
+  ShieldAlert,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 interface EntityCardProps {
@@ -70,28 +71,35 @@ export const EntityCard: React.FC<EntityCardProps> = ({
     });
   };
 
-  // Render type-specific attributes summary
+  // Render type-specific attributes summary with structured RPG layouts
   const renderAttributeSummary = () => {
-    const a = entity.attributes || {};
+    const attrs = entity.attributes || {};
+
     switch (entity.entityType) {
       case 'npc':
         return (
           <div className="space-y-1.5 text-xs">
             <div className="flex gap-2">
               <span className="font-semibold opacity-75">Role:</span>
-              <span>{a.role || 'Unspecified'}</span>
+              <span>{attrs.role || 'Citizen'}</span>
             </div>
-            {a.demeanor && (
+            {attrs.demeanor && (
               <div className="flex gap-2">
                 <span className="font-semibold opacity-75">Demeanor:</span>
-                <span className="italic">{a.demeanor}</span>
+                <span className="italic">{attrs.demeanor}</span>
               </div>
             )}
-            {a.lore && <p className="opacity-90 leading-relaxed pt-1">{a.lore}</p>}
-            {(a.hitPoints || a.armorClass) && (
+            {attrs.motivation && (
+              <div className="flex gap-2">
+                <span className="font-semibold opacity-75">Motivation:</span>
+                <span>{attrs.motivation}</span>
+              </div>
+            )}
+            {attrs.lore && <p className="opacity-90 leading-relaxed pt-1">{attrs.lore}</p>}
+            {(attrs.hitPoints || attrs.armorClass) && (
               <div className="flex gap-4 pt-1 font-mono text-[11px] opacity-80 border-t border-current/10">
-                {a.hitPoints && <span>HP: {a.hitPoints}</span>}
-                {a.armorClass && <span>AC: {a.armorClass}</span>}
+                {attrs.hitPoints && <span>HP: {attrs.hitPoints}</span>}
+                {attrs.armorClass && <span>AC: {attrs.armorClass}</span>}
               </div>
             )}
           </div>
@@ -102,19 +110,24 @@ export const EntityCard: React.FC<EntityCardProps> = ({
           <div className="space-y-1.5 text-xs">
             <div className="flex items-center gap-2">
               <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 font-mono text-[10px] font-bold">
-                DC {a.detectionDc} Detection
+                DC {attrs.detectionDc ?? 12} Detection
               </span>
               <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-700 dark:text-blue-300 font-mono text-[10px] font-bold">
-                DC {a.disarmDc} Disarm
+                DC {attrs.disarmDc ?? 12} Disarm
               </span>
             </div>
             <div>
-              <span className="font-semibold opacity-75">Trigger:</span> {a.trigger}
+              <span className="font-semibold opacity-75">Trigger:</span> {attrs.trigger || 'Pressure mechanism'}
             </div>
-            {a.effect && (
+            {attrs.effect && (
               <p className="opacity-90 leading-relaxed">
-                <span className="font-semibold opacity-75">Effect:</span> {a.effect}
+                <span className="font-semibold opacity-75">Effect:</span> {attrs.effect}
               </p>
+            )}
+            {attrs.resetConditions && (
+              <div className="text-[11px] opacity-75">
+                <span className="font-semibold">Reset:</span> {attrs.resetConditions}
+              </div>
             )}
           </div>
         );
@@ -124,13 +137,19 @@ export const EntityCard: React.FC<EntityCardProps> = ({
         return (
           <div className="space-y-1.5 text-xs">
             <div className="flex gap-2 items-center">
-              <span className="font-semibold opacity-75">Value:</span> {a.value}
-              {a.rarity && <span className="opacity-60">• {a.rarity}</span>}
+              <span className="font-semibold opacity-75">Value:</span> {attrs.value || 'Unvalued'}
+              {attrs.rarity && <span className="opacity-60">• {attrs.rarity}</span>}
             </div>
-            {a.physicalDescription && <p className="opacity-90">{a.physicalDescription}</p>}
-            {a.mechanicalProperties && (
-              <p className="opacity-80 italic">{a.mechanicalProperties}</p>
+            {attrs.physicalDescription && <p className="opacity-90">{attrs.physicalDescription}</p>}
+            {attrs.contents && (
+              <div className="opacity-90">
+                <span className="font-semibold opacity-75">Contents:</span> {attrs.contents}
+              </div>
             )}
+            {attrs.mechanicalProperties && (
+              <p className="opacity-80 italic">{attrs.mechanicalProperties}</p>
+            )}
+            {attrs.lore && <p className="opacity-80 text-[11px] pt-1">{attrs.lore}</p>}
           </div>
         );
 
@@ -138,17 +157,17 @@ export const EntityCard: React.FC<EntityCardProps> = ({
         return (
           <div className="space-y-1.5 text-xs">
             <div className="flex gap-3 font-mono text-[11px] font-bold opacity-85">
-              <span>CR {a.challengeRating}</span>
-              <span>HP {a.hitPoints}</span>
-              <span>AC {a.armorClass}</span>
-              <span>{a.speed}</span>
+              <span>CR {attrs.challengeRating || '1'}</span>
+              <span>HP {attrs.hitPoints || 10}</span>
+              <span>AC {attrs.armorClass || 10}</span>
+              <span>{attrs.speed || '30 ft'}</span>
             </div>
-            {a.actions && (
+            {attrs.actions && (
               <div>
-                <span className="font-semibold opacity-75">Actions:</span> {a.actions}
+                <span className="font-semibold opacity-75">Actions:</span> {attrs.actions}
               </div>
             )}
-            {a.tactics && <p className="opacity-80 italic">{a.tactics}</p>}
+            {attrs.tactics && <p className="opacity-80 italic">{attrs.tactics}</p>}
           </div>
         );
 
@@ -157,25 +176,190 @@ export const EntityCard: React.FC<EntityCardProps> = ({
       case 'area':
         return (
           <div className="space-y-1.5 text-xs">
-            {a.dimensionsLighting && <div>{a.dimensionsLighting}</div>}
-            {a.sensoryBox && (
-              <blockquote className="border-l-2 border-current/30 pl-2 italic opacity-85">
-                "{a.sensoryBox}"
-              </blockquote>
-            )}
-            {a.hazards && (
-              <div className="text-red-600 dark:text-red-400">
-                <span className="font-semibold">Hazard:</span> {a.hazards}
+            {attrs.siteType && (
+              <div className="font-semibold opacity-80 uppercase text-[10px] tracking-wider">
+                {attrs.siteType}
               </div>
             )}
-            {a.exitsConnections && <div>Exits: {a.exitsConnections}</div>}
+            {attrs.dimensionsLighting && <div>{attrs.dimensionsLighting}</div>}
+            {attrs.sensoryBox && (
+              <blockquote className="border-l-2 border-current/30 pl-2 italic opacity-85 my-1">
+                "{attrs.sensoryBox}"
+              </blockquote>
+            )}
+            {attrs.entranceAccess && (
+              <div>
+                <span className="font-semibold opacity-75">Access:</span> {attrs.entranceAccess}
+              </div>
+            )}
+            {attrs.environmentalHazards && (
+              <div className="text-red-600 dark:text-red-400">
+                <span className="font-semibold">Hazard:</span> {attrs.environmentalHazards}
+              </div>
+            )}
+            {attrs.exitsConnections && <div>Exits: {attrs.exitsConnections}</div>}
+          </div>
+        );
+
+      case 'region':
+        return (
+          <div className="space-y-1.5 text-xs">
+            {attrs.climateTerrain && (
+              <div>
+                <span className="font-semibold opacity-75">Biome:</span> {attrs.climateTerrain}
+              </div>
+            )}
+            {attrs.factionsPolitics && (
+              <div>
+                <span className="font-semibold opacity-75">Factions:</span> {attrs.factionsPolitics}
+              </div>
+            )}
+            {attrs.travelMechanics && (
+              <div>
+                <span className="font-semibold opacity-75">Travel:</span> {attrs.travelMechanics}
+              </div>
+            )}
+            {attrs.loreHistory && <p className="opacity-85 pt-1">{attrs.loreHistory}</p>}
+          </div>
+        );
+
+      // Structured Rumor Table Layout (fixes raw JSON display!)
+      case 'rumor_list':
+        return (
+          <div className="space-y-2 text-xs">
+            {attrs.diceFormula && (
+              <div className="flex items-center gap-1.5 text-[11px] font-mono opacity-80 pb-1 border-b border-current/10">
+                <Dice5 className="w-3.5 h-3.5" />
+                <span>Roll: {attrs.diceFormula}</span>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              {(attrs.entries || []).map((entry: any, idx: number) => {
+                const rollVal = Array.isArray(entry.roll) ? entry.roll.join('-') : (entry.roll ?? idx + 1);
+                const veracity = entry.veracity || 'True';
+                const isDeceptive = veracity.includes('False') || veracity.includes('Deceptive');
+                const isPartial = veracity.includes('Partial');
+
+                return (
+                  <div
+                    key={idx}
+                    className="p-1.5 rounded bg-black/5 dark:bg-white/5 border border-current/10 flex items-start gap-2"
+                  >
+                    <span className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-mono text-[10px] font-bold flex-shrink-0">
+                      d6 ({rollVal})
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="leading-snug italic">"{entry.statement || entry.text || entry.description}"</p>
+                      <div className="flex items-center gap-2 mt-1 text-[10px]">
+                        <span
+                          className={`font-semibold px-1 py-0.2 rounded text-[9px] uppercase ${
+                            isDeceptive
+                              ? 'bg-red-500/20 text-red-600 dark:text-red-400'
+                              : isPartial
+                              ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                              : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                          }`}
+                        >
+                          {veracity}
+                        </span>
+                        {entry.sourceDc && <span className="opacity-70">Source: {entry.sourceDc}</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {(!attrs.entries || attrs.entries.length === 0) && (
+                <div className="opacity-50 italic">No rumor entries recorded yet.</div>
+              )}
+            </div>
+          </div>
+        );
+
+      // Structured Random Event Table Layout (fixes raw JSON display!)
+      case 'random_event_list':
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between text-[11px] font-mono opacity-80 pb-1 border-b border-current/10">
+              <span className="flex items-center gap-1.5">
+                <Dice5 className="w-3.5 h-3.5" />
+                <span>Roll: {attrs.diceFormula || '1d6'}</span>
+              </span>
+              {attrs.frequencyTrigger && <span className="text-[10px]">{attrs.frequencyTrigger}</span>}
+            </div>
+            <div className="space-y-1.5">
+              {(attrs.entries || []).map((entry: any, idx: number) => {
+                const rollVal = Array.isArray(entry.roll) ? entry.roll.join('-') : (entry.roll ?? idx + 1);
+                return (
+                  <div
+                    key={idx}
+                    className="p-1.5 rounded bg-black/5 dark:bg-white/5 border border-current/10 flex items-start gap-2"
+                  >
+                    <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-mono text-[10px] font-bold flex-shrink-0">
+                      [{rollVal}]
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-[11px]">{entry.title}</div>
+                      <p className="opacity-90 leading-snug">{entry.description}</p>
+                    </div>
+                  </div>
+                );
+              })}
+              {(!attrs.entries || attrs.entries.length === 0) && (
+                <div className="opacity-50 italic">No events in table yet.</div>
+              )}
+            </div>
+          </div>
+        );
+
+      // Image Module Layout
+      case 'image':
+        return (
+          <div className="space-y-2 text-xs">
+            {attrs.assetUrl ? (
+              <div className="overflow-hidden rounded border border-current/20">
+                <img
+                  src={attrs.assetUrl}
+                  alt={attrs.caption || entity.name}
+                  className="w-full object-cover max-h-48"
+                />
+              </div>
+            ) : (
+              <div className="border-2 border-dashed border-current/20 rounded p-6 flex flex-col items-center justify-center opacity-60 text-center">
+                <ImageIcon className="w-8 h-8 mb-1" />
+                <span className="font-semibold">Image Asset Placeholder</span>
+                <span className="text-[10px]">{attrs.aspectRatio || '1:1'} • {attrs.stylePreset || 'Sketch'}</span>
+              </div>
+            )}
+            {attrs.prompt && (
+              <p className="italic text-[11px] opacity-75">
+                <span className="font-semibold not-italic">Prompt:</span> {attrs.prompt}
+              </p>
+            )}
+            {attrs.caption && (
+              <div className="text-center font-serif text-[11px] opacity-80 border-t border-current/10 pt-1">
+                {attrs.caption}
+              </div>
+            )}
           </div>
         );
 
       default:
+        // Graceful key-value fallback instead of raw JSON dump
         return (
-          <div className="text-xs opacity-80 whitespace-pre-wrap">
-            {JSON.stringify(a, null, 2).slice(0, 200)}
+          <div className="space-y-1 text-xs">
+            {Object.entries(attrs).map(([key, val]) => {
+              if (key === 'customFields' && Object.keys(val || {}).length === 0) return null;
+              return (
+                <div key={key} className="flex gap-2">
+                  <span className="font-semibold capitalize opacity-70">
+                    {key.replace(/([A-Z])/g, ' $1')}:
+                  </span>
+                  <span className="opacity-90 truncate">
+                    {typeof val === 'object' ? JSON.stringify(val) : String(val)}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         );
     }
