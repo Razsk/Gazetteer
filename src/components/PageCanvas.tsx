@@ -1,10 +1,39 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Page, useScenarioStore } from '@/store/scenarioStore';
 import { EntityCard } from './EntityCard';
-import { ThemeSkin, THEME_SKINS } from './themeSkin';
-import { Columns2, Layout, Palette } from 'lucide-react';
+import { SortableEntityCard } from './SortableEntityCard';
+import { ThemeSkin } from './themeSkin';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragStartEvent,
+  DragOverlay,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable';
+import {
+  Columns2,
+  Palette,
+  Pencil,
+  Check,
+  Layout,
+  X,
+  CheckSquare,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+} from 'lucide-react';
 
 interface PageCanvasProps {
   page: Page;
@@ -12,7 +41,88 @@ interface PageCanvasProps {
 
 export const PageCanvas: React.FC<PageCanvasProps> = ({ page }) => {
   const store = useScenarioStore();
-  const placements = store.placements[page.id] || [];
+  const rawPlacements = store.placements[page.id] || [];
+  const sortedPlacements = [...rawPlacements].sort((a, b) => a.displayOrder - b.displayOrder);
+
+  const [mounted, setMounted] = useState(false);
+  const [activePlacementId, setActivePlacementId] = useState<string | null>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleInput, setTitleInput] = useState(page.title || '');
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActivePlacementId(String(event.active.id));
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActivePlacementId(null);
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = sortedPlacements.findIndex((p) => p.id === active.id);
+    const newIndex = sortedPlacements.findIndex((p) => p.id === over.id);
+
+    if (oldIndex !== -1 && newIndex !== -1) {
+      const newOrder = arrayMove(sortedPlacements, oldIndex, newIndex);
+      store.reorderPlacements(page.id, newOrder);
+    }
+  };
+
+  const handleDragCancel = () => {
+    setActivePlacementId(null);
+  };
+
+  const activePlacement = activePlacementId
+    ? sortedPlacements.find((p) => p.id === activePlacementId)
+    : null;
+  const activeEntity = activePlacement ? store.entities[activePlacement.entityId] : null;
+
+  const currentIndex = store.pages.findIndex((p) => p.id === page.id);
+  const totalPages = store.pages.length;
+  const prevPage = currentIndex > 0 ? store.pages[currentIndex - 1] : null;
+  const nextPage = currentIndex < totalPages - 1 ? store.pages[currentIndex + 1] : null;
+
+  const handlePrevPage = () => {
+    if (prevPage) {
+      store.setActivePage(prevPage.id);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (nextPage) {
+      store.setActivePage(nextPage.id);
+    }
+  };
+
+  const handleAddPage = () => {
+    const newPage = store.createPage();
+    store.setActivePage(newPage.id);
+  };
+
+  useEffect(() => {
+    setTitleInput(page.title || '');
+  }, [page.title]);
+
+  const handleSaveTitle = () => {
+    if (titleInput.trim()) {
+      store.updatePage(page.id, { title: titleInput.trim() });
+    }
+    setIsEditingTitle(false);
+  };
 
   const handleTogglePageColumns = () => {
     store.updatePage(page.id, {
@@ -26,18 +136,118 @@ export const PageCanvas: React.FC<PageCanvasProps> = ({ page }) => {
 
   return (
     <div className="flex flex-col items-center">
-      {/* Page Toolbar (no-print) */}
-      <div className="w-[210mm] max-w-full flex items-center justify-between pb-2 text-xs text-neutral-400 no-print">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-neutral-200">
-            Page {page.pageNumber}: {page.title || 'Untitled'}
-          </span>
+      {/* Top Page Toolbar & Navigation (no-print) */}
+      <div className="w-[210mm] max-w-full flex items-center justify-between pb-3 text-xs text-neutral-400 no-print gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Top Page Switcher Controls */}
+          <div className="flex items-center bg-neutral-900 border border-neutral-800 rounded-md p-0.5">
+            <button
+              onClick={handlePrevPage}
+              disabled={!prevPage}
+              className={`p-1 rounded transition-colors ${
+                prevPage
+                  ? 'hover:bg-neutral-800 text-neutral-200 hover:text-white cursor-pointer'
+                  : 'opacity-25 cursor-not-allowed text-neutral-600'
+              }`}
+              title={prevPage ? `Previous: Page ${prevPage.pageNumber} (${prevPage.title || 'Untitled'})` : 'First page'}
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+
+            <span className="px-2 text-xs font-semibold text-neutral-300 select-none">
+              {currentIndex + 1} / {totalPages}
+            </span>
+
+            <button
+              onClick={handleNextPage}
+              disabled={!nextPage}
+              className={`p-1 rounded transition-colors ${
+                nextPage
+                  ? 'hover:bg-neutral-800 text-neutral-200 hover:text-white cursor-pointer'
+                  : 'opacity-25 cursor-not-allowed text-neutral-600'
+              }`}
+              title={nextPage ? `Next: Page ${nextPage.pageNumber} (${nextPage.title || 'Untitled'})` : 'Last page'}
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="h-4 w-px bg-neutral-800" />
+
+          {/* Page Title & Inline Rename */}
+          {isEditingTitle ? (
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold text-neutral-300">Page {page.pageNumber}:</span>
+              <input
+                type="text"
+                value={titleInput}
+                onChange={(e) => setTitleInput(e.target.value)}
+                onBlur={handleSaveTitle}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveTitle();
+                  if (e.key === 'Escape') setIsEditingTitle(false);
+                }}
+                autoFocus
+                className="px-1.5 py-0.5 text-xs bg-neutral-900 border border-indigo-400 rounded text-white focus:outline-none"
+              />
+              <button
+                onClick={handleSaveTitle}
+                className="p-1 rounded hover:bg-neutral-800 text-emerald-400 cursor-pointer"
+                title="Save title"
+              >
+                <Check className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <div
+              onClick={() => setIsEditingTitle(true)}
+              className="flex items-center gap-1.5 cursor-pointer group"
+              title="Click to rename page"
+            >
+              <span className="font-semibold text-neutral-200 group-hover:text-white group-hover:underline">
+                Page {page.pageNumber}: {page.title || 'Untitled'}
+              </span>
+              <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-60 text-neutral-400" />
+            </div>
+          )}
+
           <span className="px-1.5 py-0.5 rounded bg-neutral-800 text-[10px] text-neutral-300">
             {page.pageSize} ({page.columnCount} Col)
           </span>
+
+          {/* Quick Selection Helpers on Page */}
+          {store.selectedEntityIds.length > 0 ? (
+            <button
+              onClick={() => store.clearSelection()}
+              className="flex items-center gap-1 ml-1 px-2 py-0.5 rounded bg-red-950/40 hover:bg-red-900 border border-red-800/40 text-red-300 text-[11px] transition-colors cursor-pointer"
+              title="Clear all checked checkboxes across scenario"
+            >
+              <X className="w-3 h-3" />
+              <span>Deselect All ({store.selectedEntityIds.length})</span>
+            </button>
+          ) : sortedPlacements.length > 0 && (
+            <button
+              onClick={() => store.selectAllOnPage(page.id)}
+              className="flex items-center gap-1 ml-1 px-2 py-0.5 rounded bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 text-[11px] transition-colors cursor-pointer"
+              title="Select all entities on this page for AI editing"
+            >
+              <CheckSquare className="w-3 h-3" />
+              <span>Select Page</span>
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Add Page Shortcut */}
+          <button
+            onClick={handleAddPage}
+            className="flex items-center gap-1 px-2 py-1 rounded bg-neutral-850 hover:bg-neutral-800 border border-neutral-700 hover:border-neutral-600 text-neutral-200 text-xs transition-colors cursor-pointer"
+            title="Create and switch to a new page"
+          >
+            <Plus className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Add Page</span>
+          </button>
+
           {/* Skin selector */}
           <div className="flex items-center gap-1 bg-neutral-900 border border-neutral-800 rounded px-1.5 py-0.5">
             <Palette className="w-3.5 h-3.5 text-neutral-400" />
@@ -56,7 +266,7 @@ export const PageCanvas: React.FC<PageCanvasProps> = ({ page }) => {
           {/* Column Toggle */}
           <button
             onClick={handleTogglePageColumns}
-            className="flex items-center gap-1 px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200"
+            className="flex items-center gap-1 px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 cursor-pointer"
             title="Toggle between 1-column and 2-column page layout"
           >
             <Columns2 className="w-3.5 h-3.5" />
@@ -82,34 +292,140 @@ export const PageCanvas: React.FC<PageCanvasProps> = ({ page }) => {
           <div className="absolute inset-2 border border-[#d8c39d]/40 pointer-events-none rounded" />
         )}
 
-        {/* Page Grid Track */}
-        <div
-          className={`grid gap-4 ${
-            page.columnCount === 2 ? 'grid-cols-2' : 'grid-cols-1'
-          }`}
+        {/* Page Grid Track with Sortable Drag and Drop */}
+        <DndContext
+          id={`dnd-context-page-${page.id}`}
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
         >
-          {placements.map((placement) => {
-            const entity = store.entities[placement.entityId];
-            if (!entity) return null;
+          <SortableContext
+            items={sortedPlacements.map((p) => p.id)}
+            strategy={rectSortingStrategy}
+          >
+            <div
+              className={`grid gap-4 ${
+                page.columnCount === 2 ? 'grid-cols-2' : 'grid-cols-1'
+              }`}
+            >
+              {sortedPlacements.map((placement, index) => {
+                const entity = store.entities[placement.entityId];
+                if (!entity) return null;
 
+                return (
+                  <SortableEntityCard
+                    key={placement.id}
+                    placement={placement}
+                    entity={entity}
+                    pageSkin={page.themeSkin}
+                    isFirst={index === 0}
+                    isLast={index === sortedPlacements.length - 1}
+                    onMoveUp={() => store.movePlacementOrder(page.id, placement.id, 'up')}
+                    onMoveDown={() => store.movePlacementOrder(page.id, placement.id, 'down')}
+                  />
+                );
+              })}
+
+              {sortedPlacements.length === 0 && (
+                <div className="col-span-full border-2 border-dashed border-neutral-500/20 rounded-lg p-12 flex flex-col items-center justify-center text-center opacity-40">
+                  <Layout className="w-10 h-10 mb-2" />
+                  <p className="text-sm font-medium">This page is currently empty</p>
+                  <p className="text-xs">Add elements from the Library in the sidebar to populate this page spread.</p>
+                </div>
+              )}
+            </div>
+          </SortableContext>
+
+          {mounted && (
+            <DragOverlay
+              dropAnimation={{
+                duration: 180,
+                easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
+              }}
+            >
+              {activePlacement && activeEntity ? (
+                <div
+                  className={`cursor-grabbing opacity-95 transition-shadow ${
+                    page.columnCount === 1 || activePlacement.columnSpan === 2
+                      ? 'w-[180mm] max-w-full'
+                      : 'w-[88mm] max-w-full'
+                  }`}
+                >
+                  <EntityCard
+                    placement={activePlacement}
+                    entity={activeEntity}
+                    pageSkin={page.themeSkin}
+                    isDragOverlay
+                  />
+                </div>
+              ) : null}
+            </DragOverlay>
+          )}
+        </DndContext>
+      </div>
+
+      {/* Bottom Page Navigation (no-print) */}
+      <div className="w-[210mm] max-w-full flex items-center justify-between mt-6 pb-12 text-xs text-neutral-400 no-print border-t border-neutral-800/80 pt-4 gap-2 flex-wrap">
+        {/* Previous Page Button */}
+        <button
+          onClick={handlePrevPage}
+          disabled={!prevPage}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+            prevPage
+              ? 'bg-neutral-900 border-neutral-800 hover:border-neutral-700 text-neutral-200 hover:text-white cursor-pointer'
+              : 'opacity-25 cursor-not-allowed bg-neutral-950 border-neutral-900 text-neutral-600'
+          }`}
+          title={prevPage ? `Previous: Page ${prevPage.pageNumber} (${prevPage.title || 'Untitled'})` : 'No previous page'}
+        >
+          <ChevronLeft className="w-4 h-4" />
+          <span>{prevPage ? `Page ${prevPage.pageNumber}: ${prevPage.title || 'Untitled'}` : 'Previous Page'}</span>
+        </button>
+
+        {/* Page Jump Pills */}
+        <div className="flex items-center gap-1.5 max-w-sm overflow-x-auto py-1">
+          {store.pages.map((p) => {
+            const isCurrent = p.id === page.id;
             return (
-              <EntityCard
-                key={placement.id}
-                placement={placement}
-                entity={entity}
-                pageSkin={page.themeSkin}
-              />
+              <button
+                key={p.id}
+                onClick={() => store.setActivePage(p.id)}
+                className={`min-w-7 h-7 px-2 flex items-center justify-center rounded-md text-xs font-medium transition-all cursor-pointer ${
+                  isCurrent
+                    ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-900/40'
+                    : 'bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-neutral-400 hover:text-neutral-200'
+                }`}
+                title={`Jump to Page ${p.pageNumber}: ${p.title || 'Untitled'}`}
+              >
+                {p.pageNumber}
+              </button>
             );
           })}
 
-          {placements.length === 0 && (
-            <div className="col-span-full border-2 border-dashed border-neutral-500/20 rounded-lg p-12 flex flex-col items-center justify-center text-center opacity-40">
-              <Layout className="w-10 h-10 mb-2" />
-              <p className="text-sm font-medium">This page is currently empty</p>
-              <p className="text-xs">Add elements from the Library in the sidebar to populate this page spread.</p>
-            </div>
-          )}
+          <button
+            onClick={handleAddPage}
+            className="w-7 h-7 flex items-center justify-center rounded-md bg-neutral-900 border border-dashed border-neutral-700 hover:border-indigo-500 text-neutral-400 hover:text-indigo-400 text-xs transition-colors cursor-pointer"
+            title="Add a new page"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
         </div>
+
+        {/* Next Page Button */}
+        <button
+          onClick={handleNextPage}
+          disabled={!nextPage}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+            nextPage
+              ? 'bg-neutral-900 border-neutral-800 hover:border-neutral-700 text-neutral-200 hover:text-white cursor-pointer'
+              : 'opacity-25 cursor-not-allowed bg-neutral-950 border-neutral-900 text-neutral-600'
+          }`}
+          title={nextPage ? `Next: Page ${nextPage.pageNumber} (${nextPage.title || 'Untitled'})` : 'No next page'}
+        >
+          <span>{nextPage ? `Page ${nextPage.pageNumber}: ${nextPage.title || 'Untitled'}` : 'Next Page'}</span>
+          <ChevronRight className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );

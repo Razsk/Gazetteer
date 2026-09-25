@@ -36,6 +36,15 @@ export interface Scenario {
   updatedAt: string;
 }
 
+export interface ScenarioFileFormat {
+  version: 1;
+  scenario: Scenario;
+  pages: Page[];
+  entities: Record<string, Entity>;
+  placements: Record<string, Placement[]>;
+  exportedAt?: string;
+}
+
 export interface ScenarioStoreState {
   currentScenario: Scenario | null;
   pages: Page[];
@@ -49,6 +58,8 @@ export interface ScenarioStoreState {
   createPage: () => Page;
   updatePage: (pageId: string, updates: Partial<Page>) => void;
   deletePage: (pageId: string) => void;
+  movePage: (pageId: string, direction: 'up' | 'down') => void;
+  reorderPages: (newPages: Page[]) => void;
   setActivePage: (pageId: string) => void;
   setScenarioMetadata: (meta: Partial<Scenario>) => void;
 
@@ -60,11 +71,17 @@ export interface ScenarioStoreState {
   updatePlacement: (pageId: string, placementId: string, updates: Partial<Placement>) => void;
   removePlacement: (pageId: string, placementId: string) => void;
   reorderPlacements: (pageId: string, newPlacements: Placement[]) => void;
+  movePlacementOrder: (pageId: string, placementId: string, direction: 'up' | 'down') => void;
+  movePlacement: (sourcePageId: string, targetPageId: string, placementId: string) => boolean;
   forkPlacement: (pageId: string, placementId: string) => string;
 
   toggleEntitySelection: (entityId: string) => void;
   clearSelection: () => void;
   selectAllOnPage: (pageId: string) => void;
+  selectAllEntities: () => void;
+
+  exportScenario: () => ScenarioFileFormat;
+  loadScenario: (data: unknown) => boolean;
 }
 
 const initialScenarioId = 'scen-default';
@@ -146,6 +163,28 @@ export const useScenarioStore = create<ScenarioStoreState>((set, get) => ({
         placements: newPlacements,
         activePageId: state.activePageId === pageId ? (renumbered[0]?.id || null) : state.activePageId,
       };
+    });
+  },
+
+  movePage: (pageId: string, direction: 'up' | 'down') => {
+    set((state) => {
+      const index = state.pages.findIndex((p) => p.id === pageId);
+      if (index === -1) return state;
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= state.pages.length) return state;
+
+      const newPages = [...state.pages];
+      const [moved] = newPages.splice(index, 1);
+      newPages.splice(targetIndex, 0, moved);
+
+      const renumbered = newPages.map((p, idx) => ({ ...p, pageNumber: idx + 1 }));
+      return { pages: renumbered };
+    });
+  },
+
+  reorderPages: (newPages: Page[]) => {
+    set({
+      pages: newPages.map((p, idx) => ({ ...p, pageNumber: idx + 1 })),
     });
   },
 
@@ -250,6 +289,50 @@ export const useScenarioStore = create<ScenarioStoreState>((set, get) => ({
     }));
   },
 
+  movePlacementOrder: (pageId: string, placementId: string, direction: 'up' | 'down') => {
+    const list = [...(get().placements[pageId] || [])].sort((a, b) => a.displayOrder - b.displayOrder);
+    const index = list.findIndex((p) => p.id === placementId);
+    if (index === -1) return;
+
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= list.length) return;
+
+    const updated = [...list];
+    const [moved] = updated.splice(index, 1);
+    updated.splice(targetIndex, 0, moved);
+
+    get().reorderPlacements(pageId, updated);
+  },
+
+  movePlacement: (sourcePageId: string, targetPageId: string, placementId: string) => {
+    if (sourcePageId === targetPageId) return false;
+    const state = get();
+    const sourceList = state.placements[sourcePageId] || [];
+    const placement = sourceList.find((p) => p.id === placementId);
+    if (!placement) return false;
+
+    const targetPageExists = state.pages.some((p) => p.id === targetPageId);
+    if (!targetPageExists) return false;
+
+    const targetList = state.placements[targetPageId] || [];
+    const updatedPlacement: Placement = {
+      ...placement,
+      pageId: targetPageId,
+      displayOrder: targetList.length,
+    };
+
+    set((s) => ({
+      placements: {
+        ...s.placements,
+        [sourcePageId]: (s.placements[sourcePageId] || [])
+          .filter((p) => p.id !== placementId)
+          .map((p, idx) => ({ ...p, displayOrder: idx })),
+        [targetPageId]: [...(s.placements[targetPageId] || []), updatedPlacement],
+      },
+    }));
+    return true;
+  },
+
   forkPlacement: (pageId: string, placementId: string) => {
     const state = get();
     const placement = (state.placements[pageId] || []).find((p) => p.id === placementId);
@@ -292,5 +375,41 @@ export const useScenarioStore = create<ScenarioStoreState>((set, get) => ({
     const placements = get().placements[pageId] || [];
     const ids = Array.from(new Set(placements.map((p) => p.entityId)));
     set({ selectedEntityIds: ids });
+  },
+
+  selectAllEntities: () => {
+    const allIds = Object.keys(get().entities);
+    set({ selectedEntityIds: allIds });
+  },
+
+  exportScenario: () => {
+    const state = get();
+    return {
+      version: 1,
+      scenario: state.currentScenario || defaultScenario,
+      pages: state.pages,
+      entities: state.entities,
+      placements: state.placements,
+      exportedAt: new Date().toISOString(),
+    };
+  },
+
+  loadScenario: (data: unknown) => {
+    if (!data || typeof data !== 'object') return false;
+    const file = data as Partial<ScenarioFileFormat>;
+    if (!file.scenario || !file.scenario.id || !file.scenario.title) return false;
+    if (!Array.isArray(file.pages) || file.pages.length === 0) return false;
+    if (!file.entities || typeof file.entities !== 'object') return false;
+    if (!file.placements || typeof file.placements !== 'object') return false;
+
+    set({
+      currentScenario: file.scenario,
+      pages: file.pages,
+      entities: file.entities,
+      placements: file.placements,
+      selectedEntityIds: [],
+      activePageId: file.pages[0]?.id || null,
+    });
+    return true;
   },
 }));

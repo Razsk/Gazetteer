@@ -4,7 +4,8 @@ import React, { useState } from 'react';
 import { useScenarioStore } from '@/store/scenarioStore';
 import { EntityType, createDefaultEntity } from '@/domain/entities';
 import { getEntityIcon } from './themeSkin';
-import { Plus, BookOpen, Layers, Settings, ChevronRight } from 'lucide-react';
+import { Plus, BookOpen, Layers, Settings, ChevronUp, ChevronDown, Pencil, Check, Download, Upload, RotateCcw } from 'lucide-react';
+import { EditEntityModal } from './EditEntityModal';
 
 const ENTITY_CATEGORIES: {
   title: string;
@@ -51,6 +52,72 @@ const ENTITY_CATEGORIES: {
 export const ScenarioSidebar: React.FC = () => {
   const store = useScenarioStore();
   const [activeTab, setActiveTab] = useState<'elements' | 'pages' | 'settings'>('elements');
+  const [editingPageId, setEditingPageId] = useState<string | null>(null);
+  const [editingPageTitle, setEditingPageTitle] = useState('');
+  const [editingEntityModalId, setEditingEntityModalId] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleStartRenamePage = (pageId: string, currentTitle: string) => {
+    setEditingPageId(pageId);
+    setEditingPageTitle(currentTitle || '');
+  };
+
+  const handleSaveRenamePage = (pageId: string) => {
+    if (editingPageTitle.trim()) {
+      store.updatePage(pageId, { title: editingPageTitle.trim() });
+    }
+    setEditingPageId(null);
+  };
+
+  const handleSaveScenario = () => {
+    const data = store.exportScenario();
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeTitle = (store.currentScenario?.title || 'scenario')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    link.href = url;
+    link.download = `${safeTitle || 'scenario'}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const parsed = JSON.parse(content);
+        const success = store.loadScenario(parsed);
+        if (!success) {
+          alert('Invalid scenario file format.');
+        }
+      } catch (err) {
+        alert('Failed to parse scenario JSON file.');
+      }
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleResetScenario = () => {
+    if (window.confirm('Reset this scenario? All unsaved changes will be lost.')) {
+      store.resetStore();
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('gazetteer_saved_scenario');
+      }
+    }
+  };
 
   const handleAddElementToActivePage = (type: EntityType) => {
     if (!store.currentScenario) return;
@@ -170,18 +237,36 @@ export const ScenarioSidebar: React.FC = () => {
                 </p>
                 <div className="space-y-1 max-h-52 overflow-y-auto pr-1">
                   {allEntitiesList.map((ent) => (
-                    <button
+                    <div
                       key={ent.id}
-                      onClick={() => handleAddExistingToActivePage(ent.id)}
-                      className="w-full text-left flex items-center justify-between p-2 rounded bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 hover:border-indigo-500 transition-colors"
-                      title="Place another instance of this entity"
+                      className="w-full flex items-center justify-between p-1.5 rounded bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 hover:border-neutral-700 transition-colors group"
                     >
-                      <span className="flex items-center gap-2 truncate">
+                      <button
+                        onClick={() => handleAddExistingToActivePage(ent.id)}
+                        className="flex-1 min-w-0 text-left flex items-center gap-2 truncate cursor-pointer hover:text-white"
+                        title="Place instance on active page"
+                      >
                         <span className="opacity-60">{getEntityIcon(ent.entityType, 'w-3 h-3')}</span>
                         <span className="truncate">{ent.name}</span>
-                      </span>
-                      <span className="text-[10px] text-indigo-400 font-mono">Reuse</span>
-                    </button>
+                      </button>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => setEditingEntityModalId(ent.id)}
+                          className="p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-indigo-400 transition-colors cursor-pointer"
+                          title="Edit element details"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => handleAddExistingToActivePage(ent.id)}
+                          className="px-1.5 py-0.5 rounded bg-indigo-950/60 hover:bg-indigo-900 border border-indigo-700/50 text-[10px] text-indigo-300 font-mono transition-colors cursor-pointer"
+                          title="Place instance on active page"
+                        >
+                          Place
+                        </button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -204,37 +289,109 @@ export const ScenarioSidebar: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              {store.pages.map((p) => {
+              {store.pages.map((p, idx) => {
                 const isActive = store.activePageId === p.id;
                 const count = (store.placements[p.id] || []).length;
+                const isEditing = editingPageId === p.id;
+
                 return (
                   <div
                     key={p.id}
                     onClick={() => store.setActivePage(p.id)}
-                    className={`flex items-center justify-between p-2.5 rounded-lg border text-xs cursor-pointer transition-all ${
+                    className={`group flex items-center justify-between p-2.5 rounded-lg border text-xs cursor-pointer transition-all ${
                       isActive
                         ? 'bg-indigo-950/40 border-indigo-500 text-white'
                         : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:border-neutral-700'
                     }`}
                   >
-                    <div>
-                      <div className="font-semibold">Page {p.pageNumber}: {p.title}</div>
-                      <div className="text-[10px] text-neutral-400">
+                    <div className="flex-1 min-w-0 pr-2">
+                      {isEditing ? (
+                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          <span className="font-semibold text-neutral-400">P{p.pageNumber}:</span>
+                          <input
+                            type="text"
+                            value={editingPageTitle}
+                            onChange={(e) => setEditingPageTitle(e.target.value)}
+                            onBlur={() => handleSaveRenamePage(p.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveRenamePage(p.id);
+                              if (e.key === 'Escape') setEditingPageId(null);
+                            }}
+                            autoFocus
+                            className="flex-1 px-1.5 py-0.5 text-xs bg-black/60 border border-indigo-400 rounded text-white focus:outline-none"
+                          />
+                          <button
+                            onClick={() => handleSaveRenamePage(p.id)}
+                            className="p-1 rounded hover:bg-neutral-800 text-emerald-400"
+                            title="Save name"
+                          >
+                            <Check className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold truncate">Page {p.pageNumber}: {p.title}</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartRenamePage(p.id, p.title || '');
+                            }}
+                            className="opacity-0 group-hover:opacity-60 hover:opacity-100 p-0.5 rounded text-neutral-400 hover:text-white transition-opacity"
+                            title="Rename page"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                      <div className="text-[10px] text-neutral-400 mt-0.5">
                         {count} elements • {p.columnCount} Col • {p.themeSkin}
                       </div>
                     </div>
-                    {store.pages.length > 1 && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          store.deletePage(p.id);
-                        }}
-                        className="text-neutral-500 hover:text-red-400 p-1"
-                        title="Delete page"
-                      >
-                        ×
-                      </button>
-                    )}
+
+                    <div className="flex items-center gap-1">
+                      {/* Reordering Up/Down controls */}
+                      <div className="flex flex-col opacity-60 group-hover:opacity-100 transition-opacity">
+                        <button
+                          disabled={idx === 0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            store.movePage(p.id, 'up');
+                          }}
+                          className={`p-0.5 rounded hover:bg-neutral-800 ${
+                            idx === 0 ? 'opacity-20 cursor-not-allowed' : 'text-neutral-300 hover:text-white'
+                          }`}
+                          title="Move page up"
+                        >
+                          <ChevronUp className="w-3 h-3" />
+                        </button>
+                        <button
+                          disabled={idx === store.pages.length - 1}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            store.movePage(p.id, 'down');
+                          }}
+                          className={`p-0.5 rounded hover:bg-neutral-800 ${
+                            idx === store.pages.length - 1 ? 'opacity-20 cursor-not-allowed' : 'text-neutral-300 hover:text-white'
+                          }`}
+                          title="Move page down"
+                        >
+                          <ChevronDown className="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      {store.pages.length > 1 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            store.deletePage(p.id);
+                          }}
+                          className="text-neutral-500 hover:text-red-400 p-1 ml-1"
+                          title="Delete page"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -280,9 +437,70 @@ export const ScenarioSidebar: React.FC = () => {
                 className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-neutral-100"
               />
             </div>
+
+            {/* Scenario Backup & Storage */}
+            <div className="pt-4 border-t border-neutral-800 space-y-2">
+              <label className="block text-neutral-400 font-bold uppercase text-[10px] tracking-wider">
+                Scenario Backup & File Storage
+              </label>
+
+              {/* Hidden File Input */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept=".json"
+                className="hidden"
+              />
+
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={handleSaveScenario}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 hover:border-indigo-500 text-neutral-200 text-xs transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Download className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Save Scenario (.json)</span>
+                  </span>
+                  <span className="text-[10px] text-neutral-500">Download</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 hover:border-emerald-500 text-neutral-200 text-xs transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Upload className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Load Scenario (.json)</span>
+                  </span>
+                  <span className="text-[10px] text-neutral-500">Upload</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleResetScenario}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded bg-red-950/30 hover:bg-red-950/60 border border-red-900/40 hover:border-red-700/60 text-red-300 text-xs transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <RotateCcw className="w-3.5 h-3.5 text-red-400" />
+                    <span>Reset Scenario</span>
+                  </span>
+                  <span className="text-[10px] text-red-400/80">Clear</span>
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Edit Entity Modal */}
+      <EditEntityModal
+        entityId={editingEntityModalId}
+        isOpen={Boolean(editingEntityModalId)}
+        onClose={() => setEditingEntityModalId(null)}
+      />
     </aside>
   );
 };

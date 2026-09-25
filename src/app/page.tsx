@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useScenarioStore } from '@/store/scenarioStore';
 import { createDefaultEntity } from '@/domain/entities';
 import { ScenarioSidebar } from '@/components/ScenarioSidebar';
@@ -9,19 +9,32 @@ import { AiBatchModal } from '@/components/AiBatchModal';
 import {
   Sparkles,
   Printer,
-  Plus,
-  ChevronLeft,
-  ChevronRight,
-  BookOpen,
-  Share2,
+  Download,
+  Upload,
+  X,
 } from 'lucide-react';
 
 export default function Home() {
   const store = useScenarioStore();
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Seed sample scenario elements on initial load if empty
+  // Initialize: load from localStorage if exists, or seed sample scenario elements
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('gazetteer_saved_scenario');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (store.loadScenario(parsed)) {
+            return;
+          }
+        } catch (e) {
+          console.error('Failed to load auto-saved scenario', e);
+        }
+      }
+    }
+
     if (Object.keys(store.entities).length === 0 && store.currentScenario) {
       const page1Id = store.pages[0]?.id;
       if (!page1Id) return;
@@ -72,11 +85,60 @@ export default function Home() {
     }
   }, []);
 
+  // Auto-save changes to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined' && store.currentScenario && Object.keys(store.entities).length > 0) {
+      const data = store.exportScenario();
+      localStorage.setItem('gazetteer_saved_scenario', JSON.stringify(data));
+    }
+  }, [store.currentScenario, store.pages, store.entities, store.placements]);
+
   const activePage =
     store.pages.find((p) => p.id === store.activePageId) || store.pages[0];
 
   const handlePrintPdf = () => {
     window.print();
+  };
+
+  const handleSaveScenario = () => {
+    const data = store.exportScenario();
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeTitle = (store.currentScenario?.title || 'scenario')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    link.href = url;
+    link.download = `${safeTitle || 'scenario'}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const parsed = JSON.parse(content);
+        const success = store.loadScenario(parsed);
+        if (!success) {
+          alert('Invalid scenario file format. Please upload a valid Gazetteer scenario JSON file.');
+        }
+      } catch (err) {
+        alert('Failed to parse scenario JSON file.');
+      }
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsText(file);
   };
 
   return (
@@ -98,11 +160,52 @@ export default function Home() {
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            {/* Hidden File Input for Loading Scenarios */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              accept=".json"
+              className="hidden"
+            />
+
+            {/* Quick Deselect All Checkboxes Button (Visible when entities are selected) */}
+            {store.selectedEntityIds.length > 0 && (
+              <button
+                onClick={() => store.clearSelection()}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-950/50 hover:bg-red-900 border border-red-800/60 text-red-200 text-xs font-medium transition-colors cursor-pointer"
+                title="Clear all checked checkboxes across the scenario"
+              >
+                <X className="w-3.5 h-3.5 text-red-400" />
+                <span>Deselect All ({store.selectedEntityIds.length})</span>
+              </button>
+            )}
+
+            {/* Save Scenario to Disk */}
+            <button
+              onClick={handleSaveScenario}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-850 hover:bg-neutral-800 text-neutral-200 text-xs font-medium border border-neutral-700 hover:border-neutral-600 transition-colors cursor-pointer"
+              title="Save current scenario as a .json backup file"
+            >
+              <Download className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Save Scenario</span>
+            </button>
+
+            {/* Load Scenario from Disk */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-850 hover:bg-neutral-800 text-neutral-200 text-xs font-medium border border-neutral-700 hover:border-neutral-600 transition-colors cursor-pointer"
+              title="Load a scenario from a .json backup file"
+            >
+              <Upload className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Load Scenario</span>
+            </button>
+
             {/* AI Batch Button */}
             <button
               onClick={() => setIsAiModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-900/30 transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-900/30 transition-all cursor-pointer"
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>AI Batch Edit</span>
@@ -116,7 +219,7 @@ export default function Home() {
             {/* Print / Export to PDF */}
             <button
               onClick={handlePrintPdf}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-medium border border-neutral-700 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-medium border border-neutral-700 transition-colors cursor-pointer"
               title="Export high-fidelity A4 PDF using browser print engine"
             >
               <Printer className="w-3.5 h-3.5" />

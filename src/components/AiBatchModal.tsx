@@ -15,6 +15,7 @@ import {
   AlertCircle,
   X,
   ArrowRight,
+  Trash2,
 } from 'lucide-react';
 
 interface AiBatchModalProps {
@@ -29,6 +30,7 @@ export const AiBatchModal: React.FC<AiBatchModalProps> = ({ isOpen, onClose }) =
   const [rawAiResponse, setRawAiResponse] = useState('');
   const [parseError, setParseError] = useState<string | null>(null);
   const [stagedResponse, setStagedResponse] = useState<AiBatchEditResponse | null>(null);
+  const [showEntityPicker, setShowEntityPicker] = useState(false);
 
   if (!isOpen) return null;
 
@@ -117,9 +119,42 @@ export const AiBatchModal: React.FC<AiBatchModalProps> = ({ isOpen, onClose }) =
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
           {/* Target Summary */}
           <div className="bg-neutral-900/80 border border-neutral-800 rounded-lg p-3">
-            <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider block mb-2">
-              Selected Target Entities ({selectedEntities.length})
-            </span>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">
+                  Selected Target Entities ({selectedEntities.length})
+                </span>
+                {selectedEntities.length > 0 && (
+                  <button
+                    onClick={() => store.clearSelection()}
+                    className="text-[11px] px-2 py-0.5 rounded bg-red-950/60 hover:bg-red-900 border border-red-700/50 text-red-300 font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                    title="Deselect all entities"
+                  >
+                    <Trash2 className="w-3 h-3" /> Clear All / Deselect All
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                {store.activePageId && (
+                  <button
+                    onClick={() => store.selectAllOnPage(store.activePageId!)}
+                    className="text-[11px] px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition-colors cursor-pointer"
+                    title="Select all entities on the active page"
+                  >
+                    Select Page
+                  </button>
+                )}
+                <button
+                  onClick={() => store.selectAllEntities()}
+                  className="text-[11px] px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition-colors cursor-pointer"
+                  title="Select all entities in scenario"
+                >
+                  Select All
+                </button>
+              </div>
+            </div>
+
             <div className="flex flex-wrap gap-2">
               {selectedEntities.map((e) => (
                 <span
@@ -128,14 +163,59 @@ export const AiBatchModal: React.FC<AiBatchModalProps> = ({ isOpen, onClose }) =
                 >
                   <span className="opacity-70 text-[10px] uppercase font-mono">{e.entityType}</span>
                   <span className="font-medium">{e.name}</span>
+                  <button
+                    onClick={() => store.toggleEntitySelection(e.id)}
+                    className="ml-1 text-indigo-400 hover:text-red-400 p-0.5 rounded hover:bg-red-500/20 cursor-pointer"
+                    title={`Deselect ${e.name}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
                 </span>
               ))}
               {selectedEntities.length === 0 && (
                 <p className="text-xs text-amber-400 flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5" /> No entities selected. Check some elements on the canvas first!
+                  <AlertCircle className="w-3.5 h-3.5" /> No entities selected. Check elements below or on the canvas!
                 </p>
               )}
             </div>
+
+            {/* Expandable Entity Picker */}
+            {Object.keys(store.entities).length > 0 && (
+              <div className="pt-2 border-t border-neutral-800/80 mt-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowEntityPicker(!showEntityPicker)}
+                  className="text-[11px] text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer font-medium"
+                >
+                  {showEntityPicker ? '▲ Hide Entity Picker' : '▼ Add/toggle more entities from Scenario Library'}
+                </button>
+                {showEntityPicker && (
+                  <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto pr-1">
+                    {Object.values(store.entities).map((ent) => {
+                      const isChecked = store.selectedEntityIds.includes(ent.id);
+                      return (
+                        <label
+                          key={ent.id}
+                          className={`flex items-center gap-1.5 px-2 py-1 rounded border text-xs cursor-pointer select-none transition-colors ${
+                            isChecked
+                              ? 'bg-indigo-950/50 border-indigo-600 text-white'
+                              : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-neutral-200'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => store.toggleEntitySelection(ent.id)}
+                            className="rounded border-neutral-700 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                          />
+                          <span className="truncate">{ent.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Staged Diff Review View (If AI replied) */}
@@ -146,7 +226,7 @@ export const AiBatchModal: React.FC<AiBatchModalProps> = ({ isOpen, onClose }) =
                   AI Proposed Changes & Reasoning
                 </h3>
                 <p className="text-xs text-indigo-100/90 leading-relaxed italic">
-                  "{stagedResponse.reasoningSummary || 'No summary provided.'}"
+                  &ldquo;{stagedResponse.reasoningSummary || 'No summary provided.'}&rdquo;
                 </p>
               </div>
 
@@ -235,7 +315,7 @@ export const AiBatchModal: React.FC<AiBatchModalProps> = ({ isOpen, onClose }) =
               {/* Step 3: Paste and Parse */}
               <div>
                 <label className="block text-xs font-semibold text-neutral-300 uppercase tracking-wider mb-2">
-                  3. Paste AI's JSON Response Below
+                  3. Paste AI&apos;s JSON Response Below
                 </label>
                 <textarea
                   rows={4}
