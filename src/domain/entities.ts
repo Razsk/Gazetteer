@@ -13,6 +13,7 @@ export const EntityTypeEnum = z.enum([
   'random_event_list',
   'rumor_list',
   'image',
+  'generic_list',
 ]);
 
 export type EntityType = z.infer<typeof EntityTypeEnum>;
@@ -175,6 +176,19 @@ export const ImageAttributesSchema = z.object({
 });
 export type ImageAttributes = z.infer<typeof ImageAttributesSchema>;
 
+// 13. Generic List Attributes
+export const GenericListAttributesSchema = z.object({
+  context: z.string().default(''),
+  listStyle: z.enum(['bullet', 'numbered']).default('bullet'),
+  items: z.array(z.string()).default([
+    'First item',
+    'Second item',
+    'Third item',
+  ]),
+  customFields: CustomFieldsSchema,
+});
+export type GenericListAttributes = z.infer<typeof GenericListAttributesSchema>;
+
 // Discriminated Union of Entity Attributes
 export const EntityAttributesSchema = z.union([
   NpcAttributesSchema,
@@ -189,6 +203,7 @@ export const EntityAttributesSchema = z.union([
   RandomEventListAttributesSchema,
   RumorListAttributesSchema,
   ImageAttributesSchema,
+  GenericListAttributesSchema,
 ]);
 
 // Top-Level Canonical Entity Schema
@@ -230,6 +245,8 @@ export function createDefaultAttributes(type: EntityType): Record<string, any> {
       return RumorListAttributesSchema.parse({});
     case 'image':
       return ImageAttributesSchema.parse({});
+    case 'generic_list':
+      return GenericListAttributesSchema.parse({});
   }
 }
 
@@ -247,6 +264,7 @@ export function createDefaultEntity(scenarioId: string, entityType: EntityType, 
     random_event_list: 'New Wandering Encounters',
     rumor_list: 'New Rumor Table',
     image: 'New Image',
+    generic_list: 'New Generic List',
   };
 
   const now = new Date().toISOString();

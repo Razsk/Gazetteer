@@ -1,5 +1,13 @@
 import { create } from 'zustand';
 import { Entity, createDefaultEntity, EntityType } from '../domain/entities';
+import {
+  findMatches,
+  applyReplacements,
+  SearchOptions,
+  ReplacementResult,
+} from '../domain/searchReplace';
+
+export type FlowMode = 'balanced' | 'alternating' | 'manual';
 
 export interface Page {
   id: string;
@@ -9,6 +17,7 @@ export interface Page {
   pageSize: 'A4' | 'Letter';
   columnCount: 1 | 2;
   themeSkin: 'parchment' | 'cyberpunk' | 'gothic' | 'minimalist';
+  flowMode?: FlowMode;
 }
 
 export interface Placement {
@@ -45,6 +54,18 @@ export interface ScenarioFileFormat {
   exportedAt?: string;
 }
 
+export interface NewScenarioOptions {
+  title: string;
+  ruleset: string;
+  theme: string;
+  targetPartyLevel: number;
+  defaultThemeSkin: 'parchment' | 'cyberpunk' | 'gothic' | 'minimalist';
+  pageSize?: 'A4' | 'Letter';
+  columnCount?: 1 | 2;
+  initialPageTitle?: string;
+  seedSampleContent?: boolean;
+}
+
 export interface ScenarioStoreState {
   currentScenario: Scenario | null;
   pages: Page[];
@@ -55,7 +76,17 @@ export interface ScenarioStoreState {
 
   // Actions
   resetStore: () => void;
-  createPage: () => Page;
+  createNewScenario: (options: NewScenarioOptions) => void;
+  createPage: (options?: Partial<Page>) => Page;
+  createPageWithElements: (
+    pageOptions: Partial<Page>,
+    newElements: Array<{
+      name: string;
+      entityType: EntityType;
+      attributes: Record<string, unknown>;
+      columnSpan?: 1 | 2;
+    }>
+  ) => { page: Page; createdEntities: Entity[] };
   updatePage: (pageId: string, updates: Partial<Page>) => void;
   deletePage: (pageId: string) => void;
   movePage: (pageId: string, direction: 'up' | 'down') => void;
@@ -73,6 +104,7 @@ export interface ScenarioStoreState {
   reorderPlacements: (pageId: string, newPlacements: Placement[]) => void;
   movePlacementOrder: (pageId: string, placementId: string, direction: 'up' | 'down') => void;
   movePlacement: (sourcePageId: string, targetPageId: string, placementId: string) => boolean;
+  clonePlacement: (sourcePageId: string, placementId: string, targetPageId?: string) => Placement | null;
   forkPlacement: (pageId: string, placementId: string) => string;
 
   toggleEntitySelection: (entityId: string) => void;
@@ -82,6 +114,10 @@ export interface ScenarioStoreState {
 
   exportScenario: () => ScenarioFileFormat;
   loadScenario: (data: unknown) => boolean;
+  searchAndReplace: (
+    options: SearchOptions,
+    selectedMatchIds?: string[]
+  ) => ReplacementResult;
 }
 
 const initialScenarioId = 'scen-default';
@@ -106,6 +142,7 @@ const defaultInitialPage: Page = {
   pageSize: 'A4',
   columnCount: 2,
   themeSkin: 'parchment',
+  flowMode: 'balanced',
 };
 
 export const useScenarioStore = create<ScenarioStoreState>((set, get) => ({
@@ -127,16 +164,147 @@ export const useScenarioStore = create<ScenarioStoreState>((set, get) => ({
     });
   },
 
-  createPage: () => {
+  createNewScenario: (options: NewScenarioOptions) => {
+    const newScenarioId = `scen-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const newPageId = `page-${Date.now()}-1`;
+
+    const scenario: Scenario = {
+      id: newScenarioId,
+      title: options.title.trim() || 'Untitled Scenario',
+      ruleset: options.ruleset.trim() || 'D&D 5e',
+      theme: options.theme.trim() || 'Classic Fantasy',
+      targetPartyLevel: Number(options.targetPartyLevel) || 1,
+      defaultThemeSkin: options.defaultThemeSkin || 'parchment',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const initialPage: Page = {
+      id: newPageId,
+      scenarioId: newScenarioId,
+      pageNumber: 1,
+      title: options.initialPageTitle?.trim() || 'Page 1 - Overview',
+      pageSize: options.pageSize || 'A4',
+      columnCount: options.columnCount || 2,
+      themeSkin: options.defaultThemeSkin || 'parchment',
+      flowMode: 'balanced',
+    };
+
+    const initialEntities: Record<string, Entity> = {};
+    const initialPlacements: Record<string, Placement[]> = { [newPageId]: [] };
+
+    if (options.seedSampleContent) {
+      const npc = createDefaultEntity(newScenarioId, 'npc', 'Town Elder');
+      npc.attributes = {
+        role: 'Quest Giver',
+        demeanor: 'Worried and seeking brave souls to investigate the strange disturbances.',
+        hitPoints: 10,
+        armorClass: 10,
+      };
+      const site = createDefaultEntity(newScenarioId, 'adventure_site', options.title.trim() || 'The Forgotten Depths');
+      site.attributes = {
+        siteType: 'Dungeon / Ruin',
+        entranceAccess: 'Ancient stone archway concealed by thick ivy.',
+        alertState: 'passive',
+      };
+      const trap = createDefaultEntity(newScenarioId, 'trap', 'Concealed Pressure Plate');
+      trap.attributes = {
+        trigger: 'Step on stone flagstone in entryway corridor.',
+        detectionDc: 12,
+        disarmDc: 12,
+        effect: 'Fires darts: 1d4 piercing + 1d6 poison.',
+      };
+      const treasure = createDefaultEntity(newScenarioId, 'treasure', 'Old Iron Strongbox');
+      treasure.attributes = {
+        value: '150 gp, carved jade idol',
+        rarity: 'Uncommon',
+      };
+
+      initialEntities[site.id] = site;
+      initialEntities[npc.id] = npc;
+      initialEntities[trap.id] = trap;
+      initialEntities[treasure.id] = treasure;
+
+      initialPlacements[newPageId] = [
+        {
+          id: `plc-${Date.now()}-1`,
+          pageId: newPageId,
+          entityId: site.id,
+          columnIndex: 0,
+          columnSpan: 2,
+          displayOrder: 0,
+          styleOverrides: {},
+        },
+        {
+          id: `plc-${Date.now()}-2`,
+          pageId: newPageId,
+          entityId: npc.id,
+          columnIndex: 0,
+          columnSpan: 1,
+          displayOrder: 1,
+          styleOverrides: {},
+        },
+        {
+          id: `plc-${Date.now()}-3`,
+          pageId: newPageId,
+          entityId: trap.id,
+          columnIndex: 1,
+          columnSpan: 1,
+          displayOrder: 2,
+          styleOverrides: {},
+        },
+        {
+          id: `plc-${Date.now()}-4`,
+          pageId: newPageId,
+          entityId: treasure.id,
+          columnIndex: 0,
+          columnSpan: 1,
+          displayOrder: 3,
+          styleOverrides: {},
+        },
+      ];
+    }
+
+    set({
+      currentScenario: scenario,
+      pages: [initialPage],
+      entities: initialEntities,
+      placements: initialPlacements,
+      selectedEntityIds: [],
+      activePageId: newPageId,
+    });
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(
+          'gazetteer_saved_scenario',
+          JSON.stringify({
+            version: 1,
+            scenario,
+            pages: [initialPage],
+            entities: initialEntities,
+            placements: initialPlacements,
+            exportedAt: new Date().toISOString(),
+          })
+        );
+      } catch (e) {
+        console.error('Failed to update localStorage with new scenario', e);
+      }
+    }
+  },
+
+  createPage: (options?: Partial<Page>) => {
     const pages = get().pages;
     const newPage: Page = {
       id: `page-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       scenarioId: get().currentScenario?.id || 'scen-default',
       pageNumber: pages.length + 1,
-      title: `Page ${pages.length + 1}`,
-      pageSize: 'A4',
-      columnCount: 2,
-      themeSkin: get().currentScenario?.defaultThemeSkin || 'parchment',
+      title: options?.title?.trim() || `Page ${pages.length + 1}`,
+      pageSize: options?.pageSize || 'A4',
+      columnCount: options?.columnCount || 2,
+      themeSkin: options?.themeSkin || get().currentScenario?.defaultThemeSkin || 'parchment',
+      flowMode: options?.flowMode || 'balanced',
+      ...options,
     };
     set((state) => ({
       pages: [...state.pages, newPage],
@@ -144,6 +312,84 @@ export const useScenarioStore = create<ScenarioStoreState>((set, get) => ({
       activePageId: newPage.id,
     }));
     return newPage;
+  },
+
+  createPageWithElements: (pageOptions, newElements) => {
+    const state = get();
+    const scenarioId = state.currentScenario?.id || 'scen-default';
+    const pages = state.pages;
+
+    const newPage: Page = {
+      id: `page-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      scenarioId,
+      pageNumber: pages.length + 1,
+      title: pageOptions.title?.trim() || `Page ${pages.length + 1}`,
+      pageSize: pageOptions.pageSize || 'A4',
+      columnCount: pageOptions.columnCount || 2,
+      themeSkin: pageOptions.themeSkin || state.currentScenario?.defaultThemeSkin || 'parchment',
+      flowMode: pageOptions.flowMode || 'balanced',
+      ...pageOptions,
+    };
+
+    const newEntitiesMap: Record<string, Entity> = { ...state.entities };
+    const createdEntities: Entity[] = [];
+    const newPlacementsList: Placement[] = [];
+
+    let leftColCount = 0;
+    let rightColCount = 0;
+
+    newElements.forEach((elem, idx) => {
+      const entity = createDefaultEntity(scenarioId, elem.entityType, elem.name);
+      entity.attributes = {
+        ...entity.attributes,
+        ...elem.attributes,
+      };
+      newEntitiesMap[entity.id] = entity;
+      createdEntities.push(entity);
+
+      const span: 1 | 2 =
+        elem.columnSpan === 2 || newPage.columnCount === 1
+          ? newPage.columnCount === 1 ? 1 : 2
+          : 1;
+
+      let columnIndex = 0;
+      if (newPage.columnCount === 2) {
+        if (span === 2) {
+          columnIndex = 0;
+        } else {
+          // Distribute across columns evenly
+          if (leftColCount <= rightColCount) {
+            columnIndex = 0;
+            leftColCount++;
+          } else {
+            columnIndex = 1;
+            rightColCount++;
+          }
+        }
+      }
+
+      newPlacementsList.push({
+        id: `plc-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+        pageId: newPage.id,
+        entityId: entity.id,
+        columnIndex,
+        columnSpan: span,
+        displayOrder: idx,
+        styleOverrides: {},
+      });
+    });
+
+    set((s) => ({
+      pages: [...s.pages, newPage],
+      entities: newEntitiesMap,
+      placements: {
+        ...s.placements,
+        [newPage.id]: newPlacementsList,
+      },
+      activePageId: newPage.id,
+    }));
+
+    return { page: newPage, createdEntities };
   },
 
   updatePage: (pageId: string, updates: Partial<Page>) => {
@@ -333,6 +579,39 @@ export const useScenarioStore = create<ScenarioStoreState>((set, get) => ({
     return true;
   },
 
+  clonePlacement: (sourcePageId: string, placementId: string, targetPageId?: string) => {
+    const state = get();
+    const sourceList = state.placements[sourcePageId] || [];
+    const placement = sourceList.find((p) => p.id === placementId);
+    if (!placement) return null;
+
+    const destPageId = targetPageId || sourcePageId;
+    const destPageExists = state.pages.some((p) => p.id === destPageId);
+    if (!destPageExists) return null;
+
+    const destList = state.placements[destPageId] || [];
+    const newPlacement: Placement = {
+      id: `plc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      pageId: destPageId,
+      entityId: placement.entityId, // Shares the same canonical entity, maintaining real-time bi-directional sync
+      columnIndex: placement.columnIndex,
+      columnSpan: placement.columnSpan,
+      displayOrder: destList.length,
+      styleOverrides: {
+        ...placement.styleOverrides,
+      },
+    };
+
+    set((s) => ({
+      placements: {
+        ...s.placements,
+        [destPageId]: [...(s.placements[destPageId] || []), newPlacement],
+      },
+    }));
+
+    return newPlacement;
+  },
+
   forkPlacement: (pageId: string, placementId: string) => {
     const state = get();
     const placement = (state.placements[pageId] || []).find((p) => p.id === placementId);
@@ -411,5 +690,32 @@ export const useScenarioStore = create<ScenarioStoreState>((set, get) => ({
       activePageId: file.pages[0]?.id || null,
     });
     return true;
+  },
+
+  searchAndReplace: (options, selectedMatchIds) => {
+    const state = get();
+    const context = {
+      currentScenario: state.currentScenario,
+      pages: state.pages,
+      entities: state.entities,
+      placements: state.placements,
+    };
+
+    const allMatches = findMatches(context, options);
+    const matchesToApply = selectedMatchIds
+      ? allMatches.filter((m) => selectedMatchIds.includes(m.id))
+      : allMatches;
+
+    const result = applyReplacements(context, matchesToApply);
+
+    if (result.replacementCount > 0) {
+      set({
+        currentScenario: result.updatedScenario,
+        pages: result.updatedPages,
+        entities: result.updatedEntities,
+      });
+    }
+
+    return result;
   },
 }));

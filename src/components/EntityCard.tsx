@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Entity } from '@/domain/entities';
 import { Placement, useScenarioStore } from '@/store/scenarioStore';
 import { THEME_SKINS, ThemeSkin, getEntityIcon } from './themeSkin';
@@ -21,8 +21,11 @@ import {
   GripVertical,
   ArrowUp,
   ArrowDown,
+  List,
+  ListOrdered,
 } from 'lucide-react';
 import { EditEntityModal } from './EditEntityModal';
+import { FormattedText } from './FormattedText';
 
 interface EntityCardProps {
   placement: Placement;
@@ -36,6 +39,10 @@ interface EntityCardProps {
   isLast?: boolean;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
+  currentColumn?: 0 | 1;
+  onToggleColumn?: () => void;
+  isActive?: boolean;
+  onActivate?: () => void;
 }
 
 export const EntityCard: React.FC<EntityCardProps> = ({
@@ -50,6 +57,10 @@ export const EntityCard: React.FC<EntityCardProps> = ({
   isLast = false,
   onMoveUp,
   onMoveDown,
+  currentColumn,
+  onToggleColumn,
+  isActive = false,
+  onActivate,
 }) => {
   const store = useScenarioStore();
   const [isEditing, setIsEditing] = useState(false);
@@ -61,14 +72,21 @@ export const EntityCard: React.FC<EntityCardProps> = ({
   const isSelected = store.selectedEntityIds.includes(entity.id);
   const skin = THEME_SKINS[placement.styleOverrides.themeSkin || pageSkin];
 
+  // Count how many placements across all pages share this same canonical entity
+  const allPlacements = Object.values(store.placements).flat();
+  const instanceCount = allPlacements.filter((p) => p.entityId === entity.id).length;
+
   const handleToggleColSpan = () => {
     store.updatePlacement(placement.pageId, placement.id, {
       columnSpan: placement.columnSpan === 1 ? 2 : 1,
     });
   };
 
-  const handleFork = () => {
-    store.forkPlacement(placement.pageId, placement.id);
+  const handleClone = (targetPageId?: string) => {
+    store.clonePlacement(placement.pageId, placement.id, targetPageId);
+    if (targetPageId && targetPageId !== placement.pageId) {
+      store.setActivePage(targetPageId);
+    }
   };
 
   const handleDelete = () => {
@@ -123,17 +141,17 @@ export const EntityCard: React.FC<EntityCardProps> = ({
             </div>
             {attrs.demeanor && (
               <div className="flex gap-2">
-                <span className="font-semibold opacity-75">Demeanor:</span>
-                <span className="italic">{attrs.demeanor}</span>
+                <span className="font-semibold opacity-75 shrink-0">Demeanor:</span>
+                <FormattedText content={attrs.demeanor} className="italic flex-1" />
               </div>
             )}
             {attrs.motivation && (
               <div className="flex gap-2">
-                <span className="font-semibold opacity-75">Motivation:</span>
-                <span>{attrs.motivation}</span>
+                <span className="font-semibold opacity-75 shrink-0">Motivation:</span>
+                <FormattedText content={attrs.motivation} className="flex-1" />
               </div>
             )}
-            {attrs.lore && <p className="opacity-90 leading-relaxed pt-1">{attrs.lore}</p>}
+            {attrs.lore && <FormattedText content={attrs.lore} className="opacity-90 leading-relaxed pt-1" />}
             {(attrs.hitPoints || attrs.armorClass) && (
               <div className="flex gap-4 pt-1 font-mono text-[11px] opacity-80 border-t border-current/10">
                 {attrs.hitPoints && <span>HP: {attrs.hitPoints}</span>}
@@ -155,16 +173,19 @@ export const EntityCard: React.FC<EntityCardProps> = ({
               </span>
             </div>
             <div>
-              <span className="font-semibold opacity-75">Trigger:</span> {attrs.trigger || 'Pressure mechanism'}
+              <span className="font-semibold opacity-75">Trigger:</span>{' '}
+              <FormattedText content={attrs.trigger || 'Pressure mechanism'} />
             </div>
             {attrs.effect && (
-              <p className="opacity-90 leading-relaxed">
-                <span className="font-semibold opacity-75">Effect:</span> {attrs.effect}
-              </p>
+              <div className="opacity-90 leading-relaxed">
+                <span className="font-semibold opacity-75">Effect:</span>{' '}
+                <FormattedText content={attrs.effect} />
+              </div>
             )}
             {attrs.resetConditions && (
               <div className="text-[11px] opacity-75">
-                <span className="font-semibold">Reset:</span> {attrs.resetConditions}
+                <span className="font-semibold">Reset:</span>{' '}
+                <FormattedText content={attrs.resetConditions} />
               </div>
             )}
           </div>
@@ -178,16 +199,17 @@ export const EntityCard: React.FC<EntityCardProps> = ({
               <span className="font-semibold opacity-75">Value:</span> {attrs.value || 'Unvalued'}
               {attrs.rarity && <span className="opacity-60">• {attrs.rarity}</span>}
             </div>
-            {attrs.physicalDescription && <p className="opacity-90">{attrs.physicalDescription}</p>}
+            {attrs.physicalDescription && <FormattedText content={attrs.physicalDescription} className="opacity-90" />}
             {attrs.contents && (
               <div className="opacity-90">
-                <span className="font-semibold opacity-75">Contents:</span> {attrs.contents}
+                <span className="font-semibold opacity-75 block mb-0.5">Contents:</span>
+                <FormattedText content={attrs.contents} />
               </div>
             )}
             {attrs.mechanicalProperties && (
-              <p className="opacity-80 italic">{attrs.mechanicalProperties}</p>
+              <FormattedText content={attrs.mechanicalProperties} className="opacity-80 italic" />
             )}
-            {attrs.lore && <p className="opacity-80 text-[11px] pt-1">{attrs.lore}</p>}
+            {attrs.lore && <FormattedText content={attrs.lore} className="opacity-80 text-[11px] pt-1" />}
           </div>
         );
 
@@ -202,10 +224,17 @@ export const EntityCard: React.FC<EntityCardProps> = ({
             </div>
             {attrs.actions && (
               <div>
-                <span className="font-semibold opacity-75">Actions:</span> {attrs.actions}
+                <span className="font-semibold opacity-75 block mb-0.5">Actions:</span>
+                <FormattedText content={attrs.actions} />
               </div>
             )}
-            {attrs.tactics && <p className="opacity-80 italic">{attrs.tactics}</p>}
+            {attrs.tactics && (
+              <div>
+                <span className="font-semibold opacity-75 block mb-0.5">Tactics:</span>
+                <FormattedText content={attrs.tactics} className="opacity-80 italic" />
+              </div>
+            )}
+            {attrs.lore && <FormattedText content={attrs.lore} className="opacity-80 text-[11px] pt-1" />}
           </div>
         );
 
@@ -219,23 +248,30 @@ export const EntityCard: React.FC<EntityCardProps> = ({
                 {attrs.siteType}
               </div>
             )}
-            {attrs.dimensionsLighting && <div>{attrs.dimensionsLighting}</div>}
+            {attrs.dimensionsLighting && <FormattedText content={attrs.dimensionsLighting} />}
             {attrs.sensoryBox && (
               <blockquote className="border-l-2 border-current/30 pl-2 italic opacity-85 my-1">
-                &ldquo;{attrs.sensoryBox}&rdquo;
+                <FormattedText content={attrs.sensoryBox} />
               </blockquote>
             )}
             {attrs.entranceAccess && (
               <div>
-                <span className="font-semibold opacity-75">Access:</span> {attrs.entranceAccess}
+                <span className="font-semibold opacity-75">Access:</span>{' '}
+                <FormattedText content={attrs.entranceAccess} />
               </div>
             )}
             {attrs.environmentalHazards && (
               <div className="text-red-600 dark:text-red-400">
-                <span className="font-semibold">Hazard:</span> {attrs.environmentalHazards}
+                <span className="font-semibold">Hazard:</span>{' '}
+                <FormattedText content={attrs.environmentalHazards} />
               </div>
             )}
-            {attrs.exitsConnections && <div>Exits: {attrs.exitsConnections}</div>}
+            {attrs.exitsConnections && (
+              <div>
+                <span className="font-semibold opacity-75">Exits:</span>{' '}
+                <FormattedText content={attrs.exitsConnections} />
+              </div>
+            )}
           </div>
         );
 
@@ -244,20 +280,23 @@ export const EntityCard: React.FC<EntityCardProps> = ({
           <div className="space-y-1.5 text-xs">
             {attrs.climateTerrain && (
               <div>
-                <span className="font-semibold opacity-75">Biome:</span> {attrs.climateTerrain}
+                <span className="font-semibold opacity-75">Biome:</span>{' '}
+                <FormattedText content={attrs.climateTerrain} />
               </div>
             )}
             {attrs.factionsPolitics && (
               <div>
-                <span className="font-semibold opacity-75">Factions:</span> {attrs.factionsPolitics}
+                <span className="font-semibold opacity-75">Factions:</span>{' '}
+                <FormattedText content={attrs.factionsPolitics} />
               </div>
             )}
             {attrs.travelMechanics && (
               <div>
-                <span className="font-semibold opacity-75">Travel:</span> {attrs.travelMechanics}
+                <span className="font-semibold opacity-75">Travel:</span>{' '}
+                <FormattedText content={attrs.travelMechanics} />
               </div>
             )}
-            {attrs.loreHistory && <p className="opacity-85 pt-1">{attrs.loreHistory}</p>}
+            {attrs.loreHistory && <FormattedText content={attrs.loreHistory} className="opacity-85 pt-1" />}
           </div>
         );
 
@@ -287,7 +326,10 @@ export const EntityCard: React.FC<EntityCardProps> = ({
                       d6 ({rollVal})
                     </span>
                     <div className="flex-1 min-w-0">
-                      <p className="leading-snug italic">&ldquo;{entry.statement || entry.text || entry.description}&rdquo;</p>
+                      <FormattedText
+                        content={entry.statement || entry.text || entry.description}
+                        className="leading-snug italic"
+                      />
                       <div className="flex items-center gap-2 mt-1 text-[10px]">
                         <span
                           className={`font-semibold px-1 py-0.2 rounded text-[9px] uppercase ${
@@ -337,7 +379,7 @@ export const EntityCard: React.FC<EntityCardProps> = ({
                     </span>
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-[11px]">{entry.title}</div>
-                      <p className="opacity-90 leading-snug">{entry.description}</p>
+                      <FormattedText content={entry.description} className="opacity-90 leading-snug" />
                     </div>
                   </div>
                 );
@@ -369,17 +411,84 @@ export const EntityCard: React.FC<EntityCardProps> = ({
               </div>
             )}
             {attrs.prompt && (
-              <p className="italic text-[11px] opacity-75">
-                <span className="font-semibold not-italic">Prompt:</span> {attrs.prompt}
-              </p>
+              <div className="italic text-[11px] opacity-75">
+                <span className="font-semibold not-italic">Prompt:</span>{' '}
+                <FormattedText content={attrs.prompt} />
+              </div>
             )}
             {attrs.caption && (
               <div className="text-center font-serif text-[11px] opacity-80 border-t border-current/10 pt-1">
-                {attrs.caption}
+                <FormattedText content={attrs.caption} />
               </div>
             )}
           </div>
         );
+
+      case 'generic_list': {
+        const listItems: string[] = Array.isArray(attrs.items)
+          ? attrs.items
+          : typeof attrs.items === 'string'
+          ? attrs.items.split('\n').filter((s: string) => s.trim().length > 0)
+          : [];
+        const currentStyle: 'bullet' | 'numbered' = attrs.listStyle === 'numbered' ? 'numbered' : 'bullet';
+
+        const handleToggleListStyle = (e: React.MouseEvent) => {
+          e.stopPropagation();
+          const nextStyle = currentStyle === 'bullet' ? 'numbered' : 'bullet';
+          store.updateEntity(entity.id, {
+            attributes: {
+              ...attrs,
+              listStyle: nextStyle,
+            },
+          });
+        };
+
+        return (
+          <div className="space-y-2 text-xs">
+            {/* Header controls: Context & List Style toggle */}
+            <div className="flex items-center justify-between gap-2 pb-1 border-b border-current/10">
+              <span className="text-[10px] font-semibold uppercase tracking-wider opacity-60 flex items-center gap-1">
+                {currentStyle === 'bullet' ? <List className="w-3 h-3" /> : <ListOrdered className="w-3 h-3" />}
+                <span>{currentStyle === 'bullet' ? 'Bullet List' : 'Numbered List'}</span>
+              </span>
+
+              {/* Interactive Toggle Button: Click to switch between bullets and numbers */}
+              <button
+                type="button"
+                onClick={handleToggleListStyle}
+                title={`Switch to ${currentStyle === 'bullet' ? 'Numbered (1. 2. 3.)' : 'Bullet (•)'} style`}
+                className="px-2 py-0.5 rounded text-[10px] font-medium bg-black/5 dark:bg-white/5 hover:bg-indigo-600 hover:text-white border border-current/10 transition-colors flex items-center gap-1 cursor-pointer no-print"
+              >
+                {currentStyle === 'bullet' ? (
+                  <>
+                    <ListOrdered className="w-3 h-3" />
+                    <span>To Numbers (1. 2. 3.)</span>
+                  </>
+                ) : (
+                  <>
+                    <List className="w-3 h-3" />
+                    <span>To Bullets (•)</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* User-explained context */}
+            {attrs.context && (
+              <div className="opacity-85 text-xs italic leading-relaxed">
+                <FormattedText content={attrs.context} />
+              </div>
+            )}
+
+            {/* List items rendering with toggled style */}
+            {listItems.length > 0 ? (
+              <FormattedText content={listItems} listStyle={currentStyle} />
+            ) : (
+              <div className="opacity-40 italic text-[11px]">No items in list yet. Double-click to add items.</div>
+            )}
+          </div>
+        );
+      }
 
       default:
         // Graceful key-value fallback instead of raw JSON dump
@@ -389,12 +498,18 @@ export const EntityCard: React.FC<EntityCardProps> = ({
               if (key === 'customFields' && Object.keys(val || {}).length === 0) return null;
               return (
                 <div key={key} className="flex gap-2">
-                  <span className="font-semibold capitalize opacity-70">
+                  <span className="font-semibold capitalize opacity-70 shrink-0">
                     {key.replace(/([A-Z])/g, ' $1')}:
                   </span>
-                  <span className="opacity-90 truncate">
-                    {typeof val === 'object' ? JSON.stringify(val) : String(val)}
-                  </span>
+                  <div className="opacity-90 flex-1 min-w-0">
+                    {typeof val === 'string' ? (
+                      <FormattedText content={val} />
+                    ) : (
+                      <span className="truncate">
+                        {typeof val === 'object' ? JSON.stringify(val) : String(val)}
+                      </span>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -405,9 +520,16 @@ export const EntityCard: React.FC<EntityCardProps> = ({
 
   return (
     <div
-      className={`relative group rounded-md border transition-all duration-150 ${skin.containerClass} ${
-        placement.columnSpan === 2 ? 'col-span-full' : 'col-span-1'
-      } ${isSelected ? 'ring-2 ring-indigo-500 shadow-md print:ring-0 print:shadow-none' : ''} ${
+      data-entity-card="true"
+      onClick={(e) => {
+        e.stopPropagation();
+        onActivate?.();
+      }}
+      className={`relative group rounded-md border transition-all duration-150 ${skin.containerClass} w-full cursor-pointer ${
+        isActive ? 'ring-2 ring-indigo-500/80 shadow-md' : 'hover:border-neutral-400/40'
+      } ${
+        isSelected ? 'ring-2 ring-indigo-500 shadow-md print:ring-0 print:shadow-none' : ''
+      } ${
         isDragging ? 'opacity-30 border-dashed border-indigo-400 shadow-none' : ''
       } ${isDragOverlay ? 'shadow-2xl ring-2 ring-indigo-500 scale-[1.02] cursor-grabbing select-none' : ''}`}
     >
@@ -419,24 +541,27 @@ export const EntityCard: React.FC<EntityCardProps> = ({
       )}
 
       {/* Card Header */}
-      <div className={`flex items-center justify-between px-3 py-2 border-b rounded-t-md ${skin.headerClass}`}>
-        <div className="flex items-center gap-2 min-w-0">
-          {/* Drag Handle */}
-          {!isDragOverlay && dragHandleProps && (
+      <div className={`flex items-center justify-between px-3 py-2 border-b rounded-t-md min-h-[40px] ${skin.headerClass}`}>
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {/* Drag Handle (shown only when card is active) */}
+          {!isDragOverlay && dragHandleProps && isActive && (
             <button
               {...dragHandleProps}
               type="button"
-              className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-neutral-400 hover:text-neutral-200 opacity-40 hover:opacity-100 transition-opacity no-print touch-none focus:outline-none"
+              className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-neutral-400 hover:text-neutral-200 opacity-60 hover:opacity-100 transition-opacity no-print touch-none focus:outline-none shrink-0"
               title="Drag to rearrange order on page"
             >
               <GripVertical className="w-3.5 h-3.5" />
             </button>
           )}
 
-          {/* Multi-Selection Checkbox for AI Batching */}
+          {/* Multi-Selection Checkbox for AI Batching (always shown by default) */}
           <button
-            onClick={() => store.toggleEntitySelection(entity.id)}
-            className="text-neutral-500 hover:text-indigo-600 focus:outline-none no-print"
+            onClick={(e) => {
+              e.stopPropagation();
+              store.toggleEntitySelection(entity.id);
+            }}
+            className="text-neutral-500 hover:text-indigo-600 focus:outline-none no-print shrink-0"
             title={isSelected ? 'Deselect from AI batch' : 'Select for AI batch editing'}
           >
             {isSelected ? (
@@ -446,10 +571,12 @@ export const EntityCard: React.FC<EntityCardProps> = ({
             )}
           </button>
 
-          {/* Entity Icon & Type Badge */}
-          <span className="opacity-70">{getEntityIcon(entity.entityType)}</span>
+          {/* Entity Icon & Type Badge (shown only when card is active) */}
+          {isActive && (
+            <span className="opacity-70 shrink-0">{getEntityIcon(entity.entityType)}</span>
+          )}
 
-          {/* Editable Name */}
+          {/* Editable Name (always shown by default, full width) */}
           {isEditing ? (
             <input
               type="text"
@@ -457,27 +584,48 @@ export const EntityCard: React.FC<EntityCardProps> = ({
               onChange={(e) => setNameInput(e.target.value)}
               onBlur={handleSaveName}
               onKeyDown={(e) => e.key === 'Enter' && handleSaveName()}
+              onClick={(e) => e.stopPropagation()}
               autoFocus
-              className="px-1 py-0.5 text-xs font-semibold bg-white/80 dark:bg-black/60 rounded border border-indigo-400 focus:outline-none"
+              className="px-1 py-0.5 text-xs font-semibold bg-white/80 dark:bg-black/60 rounded border border-indigo-400 focus:outline-none flex-1 min-w-0"
             />
           ) : (
             <span
-              onClick={() => setIsEditing(true)}
-              className={`text-sm truncate cursor-pointer hover:underline ${skin.titleClass}`}
-              title="Click to rename"
+              onClick={(e) => {
+                if (isActive) {
+                  e.stopPropagation();
+                  setIsEditing(true);
+                }
+              }}
+              className={`text-sm truncate cursor-pointer hover:underline flex-1 min-w-0 ${skin.titleClass}`}
+              title={isActive ? 'Click to rename' : entity.name}
             >
               {entity.name}
             </span>
           )}
+
+          {/* Synced Clone Instance Badge (shown only when card is active) */}
+          {instanceCount > 1 && isActive && (
+            <span
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-950/70 text-indigo-300 border border-indigo-700/50 no-print shrink-0 cursor-default"
+              title={`Synced clone: This element appears in ${instanceCount} placements across the scenario. Edits stay synchronized in real time.`}
+            >
+              <Copy className="w-2.5 h-2.5 text-indigo-400" />
+              <span>Synced ({instanceCount})</span>
+            </span>
+          )}
         </div>
 
-        {/* Action Controls */}
-        <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity no-print">
-          {/* Move to Page Button & Dropdown */}
+        {/* Action Controls - shown only when card is active (clicked) */}
+        {isActive && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="flex items-center gap-1 no-print shrink-0 ml-2"
+          >
+          {/* Move / Clone to Page Button & Dropdown */}
           <div className="relative">
             <button
               onClick={() => setIsMoveMenuOpen(!isMoveMenuOpen)}
-              title="Move to another page"
+              title="Move or Clone to another page"
               className={`p-1 rounded transition-colors ${
                 isMoveMenuOpen ? 'bg-indigo-600 text-white opacity-100' : 'hover:bg-black/10 dark:hover:bg-white/10'
               }`}
@@ -491,11 +639,11 @@ export const EntityCard: React.FC<EntityCardProps> = ({
                   className="fixed inset-0 z-20 cursor-default"
                   onClick={() => setIsMoveMenuOpen(false)}
                 />
-                <div className="absolute right-0 top-full mt-1 z-30 w-52 bg-[#1b1e24] text-neutral-200 border border-neutral-700 rounded-md shadow-xl py-1 text-xs">
+                <div className="absolute right-0 top-full mt-1 z-30 w-56 bg-[#1b1e24] text-neutral-200 border border-neutral-700 rounded-md shadow-xl py-1 text-xs">
                   <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-700/60">
                     Move to Page
                   </div>
-                  <div className="max-h-48 overflow-y-auto py-1">
+                  <div className="max-h-36 overflow-y-auto py-1">
                     {store.pages.map((p) => {
                       const isCurrent = p.id === placement.pageId;
                       return (
@@ -525,6 +673,30 @@ export const EntityCard: React.FC<EntityCardProps> = ({
                       <Plus className="w-3.5 h-3.5" />
                       <span>Move to New Page</span>
                     </button>
+                  </div>
+
+                  {/* Clone to Page (Synced) */}
+                  <div className="border-t border-neutral-700/60 pt-1 mt-1">
+                    <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-indigo-400">
+                      Clone to Page (Synced)
+                    </div>
+                    <div className="max-h-36 overflow-y-auto py-0.5">
+                      {store.pages.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => {
+                            handleClone(p.id);
+                            setIsMoveMenuOpen(false);
+                          }}
+                          className="w-full text-left px-2.5 py-1.5 flex items-center justify-between text-xs hover:bg-indigo-600 hover:text-white text-neutral-200 cursor-pointer"
+                        >
+                          <span className="truncate">
+                            Page {p.pageNumber}: {p.title || 'Untitled'}
+                          </span>
+                          <span className="text-[10px] text-indigo-400 font-mono">+Clone</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </>
@@ -576,17 +748,38 @@ export const EntityCard: React.FC<EntityCardProps> = ({
             </button>
           )}
 
+          {/* Switch Column (Col 1 <-> Col 2) when in 2-column mode */}
+          {onToggleColumn && placement.columnSpan === 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleColumn();
+              }}
+              title={
+                currentColumn === 0
+                  ? 'Currently in Left Column (Click to move to Right Column)'
+                  : 'Currently in Right Column (Click to move to Left Column)'
+              }
+              className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-black/5 dark:bg-white/5 hover:bg-indigo-600 hover:text-white text-neutral-600 dark:text-neutral-300 border border-current/10 transition-colors cursor-pointer"
+            >
+              {currentColumn === 0 ? 'Col 1 →' : '← Col 2'}
+            </button>
+          )}
+
           <button
             onClick={handleToggleColSpan}
-            title={placement.columnSpan === 1 ? 'Expand to 2 columns' : 'Shrink to 1 column'}
-            className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10"
+            title={placement.columnSpan === 1 ? 'Expand to 2 columns (Full Width)' : 'Shrink to 1 column'}
+            className={`p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 ${
+              placement.columnSpan === 2 ? 'text-indigo-600 dark:text-indigo-400 font-bold' : ''
+            }`}
           >
             <Columns2 className="w-3.5 h-3.5" />
           </button>
+          {/* Clone element (Synced instance - updates across all pages) */}
           <button
-            onClick={handleFork}
-            title="Fork / Detach into independent copy"
-            className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10"
+            onClick={() => handleClone()}
+            title="Clone element (Creates a synced instance on this page - stays in sync)"
+            className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 text-neutral-400 hover:text-indigo-400 transition-colors cursor-pointer"
           >
             <Copy className="w-3.5 h-3.5" />
           </button>
@@ -605,7 +798,8 @@ export const EntityCard: React.FC<EntityCardProps> = ({
             <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
-      </div>
+      )}
+    </div>
 
       {/* Card Body */}
       {isExpanded && (

@@ -11,30 +11,87 @@ body {
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
-/* Print Media Styles for High-Fidelity PDF Export */
+/* Print Media Styles for High-Fidelity Multi-Page PDF Export */
 @media print {
   @page {
     size: A4;
     margin: 15mm;
   }
 
-  body {
+  html, body {
     background: white !important;
     color: black !important;
+    overflow: visible !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Reset all workspace wrappers so browser can paginate across multiple sheets */
+  div, main {
+    overflow: visible !important;
   }
 
   .no-print {
     display: none !important;
   }
 
+  .print-document-container {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: transparent !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
   .print-page {
+    break-after: page;
     page-break-after: always;
     box-shadow: none !important;
     border: none !important;
+    outline: none !important;
     margin: 0 !important;
     padding: 0 !important;
     width: 100% !important;
     min-height: auto !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+  }
+
+  .print-page.last-page,
+  .print-page:last-child {
+    break-after: auto !important;
+    page-break-after: auto !important;
+  }
+
+  /* Keep entity cards intact across page breaks and preserve card colors, headers, and borders */
+  [data-entity-card="true"] {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    box-shadow: none !important;
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+
+  [data-entity-card="true"] * {
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+
+  /* Completely remove any page borders, background colors, or decorative page embellishments during print */
+  .print-page,
+  .print-page > div[class*="absolute"][class*="border"] {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
   }
 }
 

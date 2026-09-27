@@ -6,18 +6,40 @@ import { createDefaultEntity } from '@/domain/entities';
 import { ScenarioSidebar } from '@/components/ScenarioSidebar';
 import { PageCanvas } from '@/components/PageCanvas';
 import { AiBatchModal } from '@/components/AiBatchModal';
+import { AiGeneratePageModal } from '@/components/AiGeneratePageModal';
+import { NewScenarioModal } from '@/components/NewScenarioModal';
+import { ExportPdfModal } from '@/components/ExportPdfModal';
+import { SearchReplaceModal } from '@/components/SearchReplaceModal';
 import {
   Sparkles,
   Printer,
   Download,
   Upload,
   X,
+  BookPlus,
+  Replace,
 } from 'lucide-react';
 
 export default function Home() {
   const store = useScenarioStore();
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [isAiGenerateModalOpen, setIsAiGenerateModalOpen] = useState(false);
+  const [isNewScenarioModalOpen, setIsNewScenarioModalOpen] = useState(false);
+  const [isExportPdfModalOpen, setIsExportPdfModalOpen] = useState(false);
+  const [isSearchReplaceModalOpen, setIsSearchReplaceModalOpen] = useState(false);
+  const [printPageIds, setPrintPageIds] = useState<string[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'h') {
+        e.preventDefault();
+        setIsSearchReplaceModalOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Initialize: load from localStorage if exists, or seed sample scenario elements
   useEffect(() => {
@@ -96,8 +118,27 @@ export default function Home() {
   const activePage =
     store.pages.find((p) => p.id === store.activePageId) || store.pages[0];
 
+  const pagesToPrint = printPageIds
+    ? store.pages.filter((p) => printPageIds.includes(p.id))
+    : store.pages;
+
+  useEffect(() => {
+    const handleAfterPrint = () => {
+      setPrintPageIds(null);
+    };
+    window.addEventListener('afterprint', handleAfterPrint);
+    return () => window.removeEventListener('afterprint', handleAfterPrint);
+  }, []);
+
   const handlePrintPdf = () => {
-    window.print();
+    setIsExportPdfModalOpen(true);
+  };
+
+  const handleConfirmPrint = (selectedPageIds: string[]) => {
+    setPrintPageIds(selectedPageIds);
+    setTimeout(() => {
+      window.print();
+    }, 100);
   };
 
   const handleSaveScenario = () => {
@@ -142,12 +183,14 @@ export default function Home() {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#0d0f12] text-neutral-100 font-sans">
-      {/* Sidebar: Elements, Pages, Settings */}
-      <ScenarioSidebar />
+    <div className="flex h-screen w-screen overflow-hidden bg-[#0d0f12] text-neutral-100 font-sans print:h-auto print:w-full print:overflow-visible print:bg-white print:block">
+      {/* Screen Interactive Workspace (hidden in print) */}
+      <div className="flex h-full w-full overflow-hidden print:hidden">
+        {/* Sidebar: Elements, Pages, Settings */}
+        <ScenarioSidebar onOpenAiGenerateModal={() => setIsAiGenerateModalOpen(true)} />
 
-      {/* Main Workspace Canvas Area */}
-      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+        {/* Main Workspace Canvas Area */}
+        <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Top Navbar */}
         <header className="h-14 border-b border-neutral-800 bg-[#16181d] px-6 flex items-center justify-between no-print z-10">
           <div className="flex items-center gap-3">
@@ -182,6 +225,16 @@ export default function Home() {
               </button>
             )}
 
+            {/* New Scenario Button */}
+            <button
+              onClick={() => setIsNewScenarioModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-850 hover:bg-neutral-800 text-neutral-200 text-xs font-medium border border-neutral-700 hover:border-neutral-600 transition-colors cursor-pointer"
+              title="Create a new scenario and configure ruleset, theme, and layout settings"
+            >
+              <BookPlus className="w-3.5 h-3.5 text-indigo-400" />
+              <span>New Scenario</span>
+            </button>
+
             {/* Save Scenario to Disk */}
             <button
               onClick={handleSaveScenario}
@@ -202,6 +255,16 @@ export default function Home() {
               <span>Load Scenario</span>
             </button>
 
+            {/* AI Generate Elements on New Page Button */}
+            <button
+              onClick={() => setIsAiGenerateModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md shadow-emerald-900/30 transition-all cursor-pointer"
+              title="Prompt LLM to create and fill new scenario elements on a brand new page"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-200" />
+              <span>AI Create Elements</span>
+            </button>
+
             {/* AI Batch Button */}
             <button
               onClick={() => setIsAiModalOpen(true)}
@@ -214,6 +277,16 @@ export default function Home() {
                   {store.selectedEntityIds.length}
                 </span>
               )}
+            </button>
+
+            {/* Search and Replace */}
+            <button
+              onClick={() => setIsSearchReplaceModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-medium border border-neutral-700 hover:border-neutral-600 transition-colors cursor-pointer"
+              title="Search and Replace across all pages (Ctrl+H)"
+            >
+              <Replace className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Search & Replace</span>
             </button>
 
             {/* Print / Export to PDF */}
@@ -239,11 +312,52 @@ export default function Home() {
           )}
         </main>
       </div>
+    </div>
+
+      {/* Dedicated Multi-Page Print Document Container (active only during print) */}
+      <div className="hidden print:block print-document-container w-full">
+        {pagesToPrint.map((p, idx) => (
+          <PageCanvas
+            key={`print-${p.id}`}
+            page={p}
+            isPrintOnly
+            isLast={idx === pagesToPrint.length - 1}
+          />
+        ))}
+      </div>
+
+      {/* Export to PDF / Print Modal */}
+      <ExportPdfModal
+        isOpen={isExportPdfModalOpen}
+        onClose={() => setIsExportPdfModalOpen(false)}
+        pages={store.pages}
+        activePageId={activePage?.id || store.pages[0]?.id || ''}
+        scenarioTitle={store.currentScenario?.title}
+        onConfirmPrint={handleConfirmPrint}
+      />
+
+      {/* AI Generate New Elements on New Page Modal */}
+      <AiGeneratePageModal
+        isOpen={isAiGenerateModalOpen}
+        onClose={() => setIsAiGenerateModalOpen(false)}
+      />
 
       {/* AI Batch Edit & Clipboard Bridge Modal */}
       <AiBatchModal
         isOpen={isAiModalOpen}
         onClose={() => setIsAiModalOpen(false)}
+      />
+
+      {/* New Scenario Settings Modal */}
+      <NewScenarioModal
+        isOpen={isNewScenarioModalOpen}
+        onClose={() => setIsNewScenarioModalOpen(false)}
+      />
+
+      {/* Search and Replace Modal */}
+      <SearchReplaceModal
+        isOpen={isSearchReplaceModalOpen}
+        onClose={() => setIsSearchReplaceModalOpen(false)}
       />
     </div>
   );

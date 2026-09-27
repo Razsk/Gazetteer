@@ -4,8 +4,9 @@ import React, { useState } from 'react';
 import { useScenarioStore } from '@/store/scenarioStore';
 import { EntityType, createDefaultEntity } from '@/domain/entities';
 import { getEntityIcon } from './themeSkin';
-import { Plus, BookOpen, Layers, Settings, ChevronUp, ChevronDown, Pencil, Check, Download, Upload, RotateCcw } from 'lucide-react';
+import { Plus, BookOpen, Layers, Settings, ChevronUp, ChevronDown, Pencil, Check, Download, Upload, RotateCcw, BookPlus, Sparkles } from 'lucide-react';
 import { EditEntityModal } from './EditEntityModal';
+import { NewScenarioModal } from './NewScenarioModal';
 
 const ENTITY_CATEGORIES: {
   title: string;
@@ -43,18 +44,24 @@ const ENTITY_CATEGORIES: {
   {
     title: 'Tables & Assets',
     types: [
+      { type: 'generic_list', label: 'Generic List' },
       { type: 'random_event_list', label: 'Random Events' },
       { type: 'image', label: 'Image Module' },
     ],
   },
 ];
 
-export const ScenarioSidebar: React.FC = () => {
+export interface ScenarioSidebarProps {
+  onOpenAiGenerateModal?: () => void;
+}
+
+export const ScenarioSidebar: React.FC<ScenarioSidebarProps> = ({ onOpenAiGenerateModal }) => {
   const store = useScenarioStore();
   const [activeTab, setActiveTab] = useState<'elements' | 'pages' | 'settings'>('elements');
   const [editingPageId, setEditingPageId] = useState<string | null>(null);
   const [editingPageTitle, setEditingPageTitle] = useState('');
   const [editingEntityModalId, setEditingEntityModalId] = useState<string | null>(null);
+  const [isNewScenarioModalOpen, setIsNewScenarioModalOpen] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleStartRenamePage = (pageId: string, currentTitle: string) => {
@@ -199,6 +206,21 @@ export const ScenarioSidebar: React.FC = () => {
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
         {activeTab === 'elements' && (
           <>
+            {/* AI Generate New Elements Action */}
+            {onOpenAiGenerateModal && (
+              <div className="pb-3 border-b border-neutral-800">
+                <button
+                  type="button"
+                  onClick={onOpenAiGenerateModal}
+                  className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-emerald-950/40 hover:bg-emerald-950/70 border border-emerald-700/50 hover:border-emerald-600 text-emerald-300 hover:text-emerald-200 font-semibold transition-colors cursor-pointer text-xs shadow-sm"
+                  title="Ask LLM to create and fill new elements on a new page"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>AI Generate Elements (New Page)</span>
+                </button>
+              </div>
+            )}
+
             {/* Create New Element Sections */}
             <div className="space-y-4">
               <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider block">
@@ -236,19 +258,31 @@ export const ScenarioSidebar: React.FC = () => {
                   Click to place another instance of a shared entity on this page:
                 </p>
                 <div className="space-y-1 max-h-52 overflow-y-auto pr-1">
-                  {allEntitiesList.map((ent) => (
-                    <div
-                      key={ent.id}
-                      className="w-full flex items-center justify-between p-1.5 rounded bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 hover:border-neutral-700 transition-colors group"
-                    >
-                      <button
-                        onClick={() => handleAddExistingToActivePage(ent.id)}
-                        className="flex-1 min-w-0 text-left flex items-center gap-2 truncate cursor-pointer hover:text-white"
-                        title="Place instance on active page"
+                  {allEntitiesList.map((ent) => {
+                    const placedCount = Object.values(store.placements).flat().filter((p) => p.entityId === ent.id).length;
+                    return (
+                      <div
+                        key={ent.id}
+                        className="w-full flex items-center justify-between p-1.5 rounded bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 hover:border-neutral-700 transition-colors group"
                       >
-                        <span className="opacity-60">{getEntityIcon(ent.entityType, 'w-3 h-3')}</span>
-                        <span className="truncate">{ent.name}</span>
-                      </button>
+                        <button
+                          onClick={() => handleAddExistingToActivePage(ent.id)}
+                          className="flex-1 min-w-0 text-left flex items-center gap-2 truncate cursor-pointer hover:text-white"
+                          title="Place synchronized instance on active page"
+                        >
+                          <span className="opacity-60">{getEntityIcon(ent.entityType, 'w-3 h-3')}</span>
+                          <span className="truncate">{ent.name}</span>
+                          {placedCount > 1 ? (
+                            <span
+                              className="text-[9px] px-1 py-0.2 rounded bg-indigo-950/70 text-indigo-300 border border-indigo-700/40 font-mono shrink-0"
+                              title={`Synced across ${placedCount} placements`}
+                            >
+                              x{placedCount}
+                            </span>
+                          ) : placedCount === 1 ? (
+                            <span className="text-[9px] text-neutral-500 font-mono shrink-0">x1</span>
+                          ) : null}
+                        </button>
 
                       <div className="flex items-center gap-1 shrink-0">
                         <button
@@ -267,7 +301,8 @@ export const ScenarioSidebar: React.FC = () => {
                         </button>
                       </div>
                     </div>
-                  ))}
+                  );
+                })}
                 </div>
               </div>
             )}
@@ -280,12 +315,23 @@ export const ScenarioSidebar: React.FC = () => {
               <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
                 Pages Overview
               </span>
-              <button
-                onClick={() => store.createPage()}
-                className="flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add Page
-              </button>
+              <div className="flex items-center gap-1.5">
+                {onOpenAiGenerateModal && (
+                  <button
+                    onClick={onOpenAiGenerateModal}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-750 hover:bg-emerald-700 text-emerald-100 text-xs font-semibold cursor-pointer border border-emerald-600/50"
+                    title="Generate new elements on a new page using AI"
+                  >
+                    <Sparkles className="w-3 h-3 text-emerald-300" /> AI Page
+                  </button>
+                )}
+                <button
+                  onClick={() => store.createPage()}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Page
+                </button>
+              </div>
             </div>
 
             <div className="space-y-1.5">
@@ -401,6 +447,18 @@ export const ScenarioSidebar: React.FC = () => {
 
         {activeTab === 'settings' && (
           <div className="space-y-4 text-xs">
+            {/* New Scenario Quick Launch */}
+            <div className="pb-3 border-b border-neutral-800">
+              <button
+                type="button"
+                onClick={() => setIsNewScenarioModalOpen(true)}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 hover:border-indigo-500/70 text-indigo-300 hover:text-indigo-200 font-semibold transition-colors cursor-pointer text-xs"
+              >
+                <BookPlus className="w-4 h-4 text-indigo-400" />
+                <span>New Scenario (Setup Wizard)</span>
+              </button>
+            </div>
+
             <div>
               <label className="block text-neutral-400 font-semibold mb-1">Scenario Title</label>
               <input
@@ -500,6 +558,12 @@ export const ScenarioSidebar: React.FC = () => {
         entityId={editingEntityModalId}
         isOpen={Boolean(editingEntityModalId)}
         onClose={() => setEditingEntityModalId(null)}
+      />
+
+      {/* New Scenario Settings Modal */}
+      <NewScenarioModal
+        isOpen={isNewScenarioModalOpen}
+        onClose={() => setIsNewScenarioModalOpen(false)}
       />
     </aside>
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Placement } from '@/store/scenarioStore';
@@ -17,6 +17,11 @@ interface SortableEntityCardProps {
   isLast?: boolean;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
+  currentColumn?: 0 | 1;
+  onToggleColumn?: () => void;
+  onHeightChange?: (height: number) => void;
+  isActive?: boolean;
+  onActivate?: () => void;
 }
 
 export const SortableEntityCard: React.FC<SortableEntityCardProps> = ({
@@ -28,6 +33,11 @@ export const SortableEntityCard: React.FC<SortableEntityCardProps> = ({
   isLast,
   onMoveUp,
   onMoveDown,
+  currentColumn,
+  onToggleColumn,
+  onHeightChange,
+  isActive,
+  onActivate,
 }) => {
   const {
     attributes,
@@ -38,6 +48,42 @@ export const SortableEntityCard: React.FC<SortableEntityCardProps> = ({
     isDragging,
   } = useSortable({ id: placement.id });
 
+  const nodeRef = useRef<HTMLDivElement | null>(null);
+
+  const setCombinedRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      setNodeRef(node);
+      nodeRef.current = node;
+    },
+    [setNodeRef]
+  );
+
+  useEffect(() => {
+    const el = nodeRef.current;
+    if (!el || !onHeightChange) return;
+
+    // Report initial height
+    const h = el.getBoundingClientRect().height;
+    if (h > 0) {
+      onHeightChange(h);
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      if (isDragging) return;
+      for (const entry of entries) {
+        if (entry.target === el) {
+          const height = entry.contentRect.height;
+          if (height > 0) {
+            onHeightChange(height);
+          }
+        }
+      }
+    });
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [onHeightChange, isDragging]);
+
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -46,9 +92,9 @@ export const SortableEntityCard: React.FC<SortableEntityCardProps> = ({
 
   return (
     <div
-      ref={setNodeRef}
+      ref={setCombinedRef}
       style={style}
-      className={placement.columnSpan === 2 ? 'col-span-full' : 'col-span-1'}
+      className="w-full"
     >
       <EntityCard
         placement={placement}
@@ -61,6 +107,10 @@ export const SortableEntityCard: React.FC<SortableEntityCardProps> = ({
         isLast={isLast}
         onMoveUp={onMoveUp}
         onMoveDown={onMoveDown}
+        currentColumn={currentColumn}
+        onToggleColumn={onToggleColumn}
+        isActive={isActive}
+        onActivate={onActivate}
       />
     </div>
   );

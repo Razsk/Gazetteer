@@ -12,7 +12,8 @@ import {
   DoorOpen,
   Dice5,
   MessageSquareQuote,
-  Image as ImageIcon
+  Image as ImageIcon,
+  ListOrdered
 } from 'lucide-react';
 
 export type ThemeSkin = 'parchment' | 'cyberpunk' | 'gothic' | 'minimalist';
@@ -92,5 +93,7 @@ export function getEntityIcon(type: EntityType, className = 'w-4 h-4') {
       return <MessageSquareQuote className={className} />;
     case 'image':
       return <ImageIcon className={className} />;
+    case 'generic_list':
+      return <ListOrdered className={className} />;
   }
 }

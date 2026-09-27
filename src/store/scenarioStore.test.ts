@@ -71,6 +71,46 @@ describe('Scenario & Reactive Placement Store (Seam 2)', () => {
     expect(updated.placements[page1Id][0].entityId).toBe(forkedEntityId);
   });
 
+  it('clones a placement as a synchronized instance sharing the same entityId (does not fork)', () => {
+    const store = useScenarioStore.getState();
+    const page1Id = store.pages[0].id;
+    const page2 = store.createPage();
+    const page2Id = page2.id;
+
+    const npc = createDefaultEntity(store.currentScenario!.id, 'npc', 'Archmage Valen');
+    store.addEntity(npc);
+    const p1 = store.addPlacement(page1Id, npc.id, 0, 1);
+
+    // Clone on same page
+    const p1Clone = store.clonePlacement(page1Id, p1.id);
+    expect(p1Clone).not.toBeNull();
+    expect(p1Clone!.entityId).toBe(npc.id);
+    expect(p1Clone!.id).not.toBe(p1.id);
+
+    // Clone to another page
+    const p2Clone = store.clonePlacement(page1Id, p1.id, page2Id);
+    expect(p2Clone).not.toBeNull();
+    expect(p2Clone!.entityId).toBe(npc.id);
+    expect(p2Clone!.pageId).toBe(page2Id);
+
+    // Verify entity count in store: STILL only 1 canonical entity (no fork!)
+    const state = useScenarioStore.getState();
+    expect(Object.keys(state.entities)).toHaveLength(1);
+    expect(state.entities[npc.id].name).toBe('Archmage Valen');
+
+    // Update entity attributes: All 3 placements stay in sync
+    store.updateEntity(npc.id, {
+      name: 'Archmage Valen (Empowered)',
+      attributes: { ...npc.attributes, hitPoints: 95 },
+    });
+
+    const refreshed = useScenarioStore.getState();
+    expect(refreshed.entities[npc.id].name).toBe('Archmage Valen (Empowered)');
+    expect(refreshed.entities[p1.entityId].name).toBe('Archmage Valen (Empowered)');
+    expect(refreshed.entities[p1Clone!.entityId].name).toBe('Archmage Valen (Empowered)');
+    expect(refreshed.entities[p2Clone!.entityId].name).toBe('Archmage Valen (Empowered)');
+  });
+
   it('moves a placement directly to another page', () => {
     const store = useScenarioStore.getState();
     const page1Id = store.pages[0].id;
@@ -195,5 +235,198 @@ describe('Scenario & Reactive Placement Store (Seam 2)', () => {
     expect(list[1].displayOrder).toBe(1);
     expect(list[2].displayOrder).toBe(2);
   });
+
+  it('creates a new blank scenario with custom settings', () => {
+    const store = useScenarioStore.getState();
+    store.createNewScenario({
+      title: 'Tomb of the Iron Lich',
+      ruleset: 'Shadowdark',
+      theme: 'Grimdark Dungeon',
+      targetPartyLevel: 5,
+      defaultThemeSkin: 'gothic',
+      pageSize: 'A4',
+      columnCount: 2,
+      initialPageTitle: 'Tomb Entrance',
+      seedSampleContent: false,
+    });
+
+    const state = useScenarioStore.getState();
+    expect(state.currentScenario?.title).toBe('Tomb of the Iron Lich');
+    expect(state.currentScenario?.ruleset).toBe('Shadowdark');
+    expect(state.currentScenario?.theme).toBe('Grimdark Dungeon');
+    expect(state.currentScenario?.targetPartyLevel).toBe(5);
+    expect(state.currentScenario?.defaultThemeSkin).toBe('gothic');
+    expect(state.pages).toHaveLength(1);
+    expect(state.pages[0].title).toBe('Tomb Entrance');
+    expect(state.pages[0].themeSkin).toBe('gothic');
+    expect(Object.keys(state.entities)).toHaveLength(0);
+    expect(state.placements[state.pages[0].id]).toHaveLength(0);
+    expect(state.activePageId).toBe(state.pages[0].id);
+  });
+
+  it('creates a new scenario with sample starter content', () => {
+    const store = useScenarioStore.getState();
+    store.createNewScenario({
+      title: 'The Sunken Temple',
+      ruleset: 'D&D 5e',
+      theme: 'Sunken Ruins',
+      targetPartyLevel: 3,
+      defaultThemeSkin: 'parchment',
+      seedSampleContent: true,
+    });
+
+    const state = useScenarioStore.getState();
+    expect(state.currentScenario?.title).toBe('The Sunken Temple');
+    expect(state.pages).toHaveLength(1);
+    expect(Object.keys(state.entities)).toHaveLength(4);
+    expect(state.placements[state.pages[0].id]).toHaveLength(4);
+  });
+
+  it('supports flowMode configuration and column management on pages', () => {
+    const store = useScenarioStore.getState();
+    const page = store.pages[0];
+    expect(page.flowMode).toBe('balanced');
+
+    // Update flow mode to alternating
+    store.updatePage(page.id, { flowMode: 'alternating' });
+    expect(useScenarioStore.getState().pages[0].flowMode).toBe('alternating');
+
+    // Update flow mode to manual
+    store.updatePage(page.id, { flowMode: 'manual' });
+    expect(useScenarioStore.getState().pages[0].flowMode).toBe('manual');
+
+    // Add placement and change its column index
+    const npc = createDefaultEntity(store.currentScenario!.id, 'npc', 'Scout');
+    store.addEntity(npc);
+    const placement = store.addPlacement(page.id, npc.id, 0, 1);
+    expect(placement.columnIndex).toBe(0);
+
+    store.updatePlacement(page.id, placement.id, { columnIndex: 1 });
+    expect(useScenarioStore.getState().placements[page.id][0].columnIndex).toBe(1);
+
+    // Export and reload verifies flowMode persistence
+    const exported = store.exportScenario();
+    expect(exported.pages[0].flowMode).toBe('manual');
+
+    store.resetStore();
+    store.loadScenario(exported);
+    expect(useScenarioStore.getState().pages[0].flowMode).toBe('manual');
+  });
+
+  it('creates a new page and populates it with newly generated elements and balanced placements', () => {
+    const store = useScenarioStore.getState();
+    const initialPagesCount = store.pages.length;
+
+    const { page, createdEntities } = store.createPageWithElements(
+      {
+        title: 'Sunken Catacombs',
+        columnCount: 2,
+        themeSkin: 'gothic',
+      },
+      [
+        {
+          name: 'The Flooded Vault',
+          entityType: 'area',
+          columnSpan: 2,
+          attributes: { mapKey: '2A', dimensionsLighting: 'Dark and flooded' },
+        },
+        {
+          name: 'Warlock Lord',
+          entityType: 'enemy',
+          columnSpan: 1,
+          attributes: { hitPoints: 50, armorClass: 15 },
+        },
+        {
+          name: 'Necrotic Rune Trap',
+          entityType: 'trap',
+          columnSpan: 1,
+          attributes: { detectionDc: 15, disarmDc: 14 },
+        },
+        {
+          name: 'Cursed Relic',
+          entityType: 'treasure',
+          columnSpan: 1,
+          attributes: { value: '500 gp', rarity: 'Rare' },
+        },
+      ]
+    );
+
+    const updated = useScenarioStore.getState();
+
+    // Verify new page
+    expect(updated.pages).toHaveLength(initialPagesCount + 1);
+    expect(page.title).toBe('Sunken Catacombs');
+    expect(page.columnCount).toBe(2);
+    expect(page.themeSkin).toBe('gothic');
+    expect(updated.activePageId).toBe(page.id);
+
+    // Verify created entities
+    expect(createdEntities).toHaveLength(4);
+    createdEntities.forEach((ent) => {
+      expect(updated.entities[ent.id]).toBeDefined();
+      expect(updated.entities[ent.id].name).toBe(ent.name);
+    });
+
+    // Verify placements on the new page
+    const placements = updated.placements[page.id];
+    expect(placements).toHaveLength(4);
+
+    // Area (columnSpan: 2) placed on col 0
+    expect(placements[0].columnSpan).toBe(2);
+    expect(placements[0].columnIndex).toBe(0);
+
+    // Next 1-column elements distributed across col 0 and col 1
+    expect(placements[1].columnSpan).toBe(1);
+    expect(placements[1].columnIndex).toBe(0);
+
+    expect(placements[2].columnSpan).toBe(1);
+    expect(placements[2].columnIndex).toBe(1);
+
+    expect(placements[3].columnSpan).toBe(1);
+    expect(placements[3].columnIndex).toBe(0);
+  });
+
+  it('performs search and replace across all pages and mutates state reactively', () => {
+    const store = useScenarioStore.getState();
+    const page1Id = store.pages[0].id;
+    const page2 = store.createPage({ title: 'Goblin Cave Page' });
+    const page2Id = page2.id;
+
+    const npc = createDefaultEntity(store.currentScenario!.id, 'npc', 'Goblin Shaman');
+    npc.attributes = {
+      ...npc.attributes,
+      lore: 'The goblin reveres the ancient crystal.',
+    };
+    store.addEntity(npc);
+    store.addPlacement(page1Id, npc.id, 0, 1);
+
+    const enemy = createDefaultEntity(store.currentScenario!.id, 'enemy', 'Goblin Warrior');
+    enemy.attributes = {
+      ...enemy.attributes,
+      tactics: 'Goblin tactics rely on swarming.',
+    };
+    store.addEntity(enemy);
+    store.addPlacement(page2Id, enemy.id, 0, 1);
+
+    // Run search and replace for 'goblin' -> 'orc' across all pages
+    const result = useScenarioStore.getState().searchAndReplace({
+      query: 'goblin',
+      replacement: 'orc',
+      matchCase: false,
+    });
+
+    expect(result.replacementCount).toBeGreaterThanOrEqual(4);
+    expect(result.pagesUpdatedCount).toBeGreaterThanOrEqual(1);
+    expect(result.entitiesUpdatedCount).toBe(2);
+
+    const refreshed = useScenarioStore.getState();
+    expect(refreshed.entities[npc.id].name).toBe('orc Shaman');
+    expect(refreshed.entities[npc.id].attributes.lore).toContain('orc reveres');
+    expect(refreshed.entities[enemy.id].name).toBe('orc Warrior');
+    expect(refreshed.entities[enemy.id].attributes.tactics).toContain('orc tactics');
+    expect(refreshed.pages.find((p) => p.id === page2Id)?.title).toBe('orc Cave Page');
+  });
 });
+
+
 

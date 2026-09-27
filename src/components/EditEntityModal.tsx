@@ -13,6 +13,8 @@ import {
   Trash2,
   AlertCircle,
   Save,
+  List,
+  ListOrdered,
 } from 'lucide-react';
 
 interface EditEntityModalProps {
@@ -578,6 +580,121 @@ export const EditEntityModal: React.FC<EditEntityModalProps> = ({
             </div>
           </div>
         );
+
+      case 'generic_list': {
+        const items = Array.isArray(attributes.items) ? attributes.items : [];
+        const listStyle = attributes.listStyle || 'bullet';
+
+        return (
+          <div className="space-y-4">
+            {/* Context explanation field */}
+            <div>
+              <label className="block text-xs font-semibold text-neutral-400 mb-1">
+                Context & Explanation (Describe what this list represents)
+              </label>
+              <textarea
+                rows={3}
+                value={attributes.context || ''}
+                onChange={(e) => handleAttrChange('context', e.target.value)}
+                placeholder="Explain what this list represents (e.g. Clues found in the study, Ritual components, Merchant inventory, Rumors heard at the docks...)"
+                className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500"
+              />
+              <span className="text-[10px] text-neutral-500 mt-1 block">
+                Use this context to set the scene, outline rules, or explain how players interact with this list.
+              </span>
+            </div>
+
+            {/* Toggle bullet and numbers */}
+            <div>
+              <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
+                List Display Style
+              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleAttrChange('listStyle', 'bullet')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+                    listStyle === 'bullet'
+                      ? 'bg-indigo-600 border-indigo-500 text-white shadow-sm'
+                      : 'bg-neutral-900 border-neutral-700 text-neutral-300 hover:bg-neutral-800'
+                  }`}
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span>Bullet List (•)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAttrChange('listStyle', 'numbered')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+                    listStyle === 'numbered'
+                      ? 'bg-indigo-600 border-indigo-500 text-white shadow-sm'
+                      : 'bg-neutral-900 border-neutral-700 text-neutral-300 hover:bg-neutral-800'
+                  }`}
+                >
+                  <ListOrdered className="w-3.5 h-3.5" />
+                  <span>Numbered List (1. 2. 3.)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* List items editor */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider">
+                  List Items ({items.length})
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleAttrChange('items', [...items, '']);
+                  }}
+                  className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-medium flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" /> Add Item
+                </button>
+              </div>
+
+              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                {items.map((item: string, idx: number) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <span className="w-6 text-center text-xs font-mono font-bold text-neutral-500 shrink-0">
+                      {listStyle === 'numbered' ? `${idx + 1}.` : '•'}
+                    </span>
+                    <input
+                      type="text"
+                      value={item}
+                      onChange={(e) => {
+                        const copy = [...items];
+                        copy[idx] = e.target.value;
+                        handleAttrChange('items', copy);
+                      }}
+                      placeholder={`Item #${idx + 1}...`}
+                      className="flex-1 px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const copy = items.filter((_: unknown, i: number) => i !== idx);
+                        handleAttrChange('items', copy);
+                      }}
+                      className="text-neutral-500 hover:text-red-400 p-1 cursor-pointer"
+                      title="Delete item"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+
+                {items.length === 0 && (
+                  <div className="p-4 border border-dashed border-neutral-800 rounded text-center text-xs text-neutral-500">
+                    No items yet. Click &ldquo;Add Item&rdquo; above to start adding elements.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      }
 
       default:
         // Generic form for arbitrary custom entity types
