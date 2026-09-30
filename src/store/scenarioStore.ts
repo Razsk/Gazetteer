@@ -210,8 +210,8 @@ export const useScenarioStore = create<ScenarioStoreState>((set, get) => ({
       const trap = createDefaultEntity(newScenarioId, 'trap', 'Concealed Pressure Plate');
       trap.attributes = {
         trigger: 'Step on stone flagstone in entryway corridor.',
-        detectionDc: 12,
-        disarmDc: 12,
+        detectionClue: 'Slightly raised flagstone with scratched mortar edges.',
+        disarm: 'Wedge an iron piton beneath the raised edge to immobilize the trigger plate.',
         effect: 'Fires darts: 1d4 piercing + 1d6 poison.',
       };
       const treasure = createDefaultEntity(newScenarioId, 'treasure', 'Old Iron Strongbox');

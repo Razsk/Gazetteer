@@ -11,6 +11,7 @@ import {
   Castle,
   DoorOpen,
   Dice5,
+  Clock,
   MessageSquareQuote,
   Image as ImageIcon,
   ListOrdered
@@ -67,7 +68,15 @@ export const THEME_SKINS: Record<ThemeSkin, SkinStyle> = {
   },
 };
 
-export function getEntityIcon(type: EntityType, className = 'w-4 h-4') {
+export function getEventListIcon(eventListType?: string, className = 'w-4 h-4') {
+  return eventListType === 'progress_clock' ? <Clock className={className} /> : <Dice5 className={className} />;
+}
+
+export function getEntityIcon(
+  type: EntityType,
+  className = 'w-4 h-4',
+  attributes?: Record<string, any>
+) {
   switch (type) {
     case 'npc':
       return <User className={className} />;
@@ -87,8 +96,10 @@ export function getEntityIcon(type: EntityType, className = 'w-4 h-4') {
       return <Castle className={className} />;
     case 'area':
       return <DoorOpen className={className} />;
-    case 'random_event_list':
-      return <Dice5 className={className} />;
+    case 'random_event_list': {
+      const isClock = (attributes?.eventListType || attributes?.eventType || attributes?.listType) === 'progress_clock';
+      return isClock ? <Clock className={className} /> : <Dice5 className={className} />;
+    }
     case 'rumor_list':
       return <MessageSquareQuote className={className} />;
     case 'image':

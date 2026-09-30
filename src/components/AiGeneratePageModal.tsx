@@ -54,7 +54,7 @@ const PRESET_PROMPTS = [
   {
     label: 'Deadly Trap Gauntlet',
     prompt:
-      'Generate an ancient traversal Area featuring two mechanical/magical Traps (with DC and disarm conditions), plus an ancient relic Item rewarding careful explorers.',
+      'Generate an ancient traversal Area featuring two mechanical/magical Traps (with detection clues and disarm instructions), plus an ancient relic Item rewarding careful explorers.',
   },
 ];
 
@@ -399,7 +399,7 @@ export const AiGeneratePageModal: React.FC<AiGeneratePageModalProps> = ({
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
                                 <span className="opacity-80">
-                                  {getEntityIcon(entity.entityType, 'w-3.5 h-3.5')}
+                                  {getEntityIcon(entity.entityType, 'w-3.5 h-3.5', entity.attributes)}
                                 </span>
                                 <span className="font-bold text-neutral-200">{entity.name}</span>
                                 <span className="text-[10px] font-mono uppercase px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-400 border border-neutral-700">
@@ -422,7 +422,16 @@ export const AiGeneratePageModal: React.FC<AiGeneratePageModalProps> = ({
                                 {entity.attributes.trigger && (
                                   <div>
                                     <strong className="text-neutral-300">Trigger:</strong>{' '}
-                                    {entity.attributes.trigger} (Detect DC {entity.attributes.detectionDc}, Disarm DC {entity.attributes.disarmDc})
+                                    {entity.attributes.trigger}
+                                    {entity.attributes.detectionClue && (
+                                      <span> • <strong className="text-neutral-300">Clue:</strong> {entity.attributes.detectionClue}</span>
+                                    )}
+                                    {entity.attributes.disarm && (
+                                      <span> • <strong className="text-neutral-300">Disarm:</strong> {entity.attributes.disarm}</span>
+                                    )}
+                                    {!entity.attributes.detectionClue && !entity.attributes.disarm && (entity.attributes.detectionDc !== undefined || entity.attributes.disarmDc !== undefined) && (
+                                      <span> (Detect DC {entity.attributes.detectionDc}, Disarm DC {entity.attributes.disarmDc})</span>
+                                    )}
                                   </div>
                                 )}
                                 {entity.attributes.value && (
@@ -442,6 +451,14 @@ export const AiGeneratePageModal: React.FC<AiGeneratePageModalProps> = ({
                                   <p className="italic text-neutral-400 line-clamp-2">
                                     {entity.attributes.sensoryBox}
                                   </p>
+                                )}
+                                {entity.attributes.contents && (
+                                  <div className="text-neutral-300 text-xs mt-1">
+                                    <strong className="text-neutral-400">Contents:</strong>{' '}
+                                    {Array.isArray(entity.attributes.contents)
+                                      ? entity.attributes.contents.join(' • ')
+                                      : entity.attributes.contents}
+                                  </div>
                                 )}
                               </div>
                             </div>
@@ -637,7 +654,7 @@ export const AiGeneratePageModal: React.FC<AiGeneratePageModalProps> = ({
                                       onChange={() => toggleReferenceEntity(ent.id)}
                                       className="rounded border-neutral-700 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
                                     />
-                                    <span className="opacity-70">{getEntityIcon(ent.entityType, 'w-3 h-3')}</span>
+                                    <span className="opacity-70">{getEntityIcon(ent.entityType, 'w-3 h-3', ent.attributes)}</span>
                                     <span className="truncate">{ent.name}</span>
                                   </label>
                                 );

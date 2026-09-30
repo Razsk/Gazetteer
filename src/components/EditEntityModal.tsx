@@ -15,7 +15,11 @@ import {
   Save,
   List,
   ListOrdered,
+  Dice5,
+  Clock,
+  Sparkles,
 } from 'lucide-react';
+import { ProgressClock } from './ProgressClock';
 
 interface EditEntityModalProps {
   entityId: string | null;
@@ -50,11 +54,17 @@ export const EditEntityModal: React.FC<EditEntityModalProps> = ({
 
   if (!isOpen || !entity) return null;
 
-  const handleAttrChange = (key: string, value: any) => {
-    const updated = { ...attributes, [key]: value };
-    setAttributes(updated);
-    setJsonString(JSON.stringify(updated, null, 2));
+  const handleAttrsChange = (updates: Record<string, any>) => {
+    setAttributes((prev) => {
+      const updated = { ...prev, ...updates };
+      setJsonString(JSON.stringify(updated, null, 2));
+      return updated;
+    });
     setJsonError(null);
+  };
+
+  const handleAttrChange = (key: string, value: any) => {
+    handleAttrsChange({ [key]: value });
   };
 
   const handleJsonChange = (raw: string) => {
@@ -254,25 +264,26 @@ export const EditEntityModal: React.FC<EditEntityModalProps> = ({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-neutral-400 mb-1">Detection DC</label>
-                <input
-                  type="number"
-                  value={attributes.detectionDc ?? 12}
-                  onChange={(e) => handleAttrChange('detectionDc', Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-neutral-400 mb-1">Disarm DC</label>
-                <input
-                  type="number"
-                  value={attributes.disarmDc ?? 12}
-                  onChange={(e) => handleAttrChange('disarmDc', Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
+            <div>
+              <label className="block text-xs font-semibold text-neutral-400 mb-1">Detection Clue</label>
+              <input
+                type="text"
+                value={attributes.detectionClue ?? attributes.detection ?? ''}
+                onChange={(e) => handleAttrChange('detectionClue', e.target.value)}
+                placeholder="e.g. Faint scrape marks along the flagstones, subtle draft of air, sulfur smell"
+                className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-neutral-400 mb-1">Disarm</label>
+              <input
+                type="text"
+                value={attributes.disarm ?? attributes.disarmMethod ?? attributes.howToDisarm ?? ''}
+                onChange={(e) => handleAttrChange('disarm', e.target.value)}
+                placeholder="e.g. Wedge an iron spike under the rim, carefully snip the tripwire"
+                className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500"
+              />
             </div>
 
             <div>
@@ -386,17 +397,25 @@ export const EditEntityModal: React.FC<EditEntityModalProps> = ({
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-neutral-400 mb-1">Type / Classification</label>
+                <label className="block text-xs font-semibold text-neutral-400 mb-1">
+                  {entity.entityType === 'area' ? 'Map Key / Room Identifier' : 'Type / Classification'}
+                </label>
                 <input
                   type="text"
-                  value={attributes.siteType || attributes.environmentType || ''}
+                  value={
+                    entity.entityType === 'area'
+                      ? attributes.mapKey ?? ''
+                      : (attributes.siteType || attributes.environmentType || '')
+                  }
                   onChange={(e) =>
                     handleAttrChange(
-                      attributes.siteType !== undefined ? 'siteType' : 'environmentType',
+                      entity.entityType === 'area'
+                        ? 'mapKey'
+                        : (attributes.siteType !== undefined ? 'siteType' : 'environmentType'),
                       e.target.value
                     )
                   }
-                  placeholder="e.g. Crypt, Stronghold, Chamber"
+                  placeholder={entity.entityType === 'area' ? 'e.g. Area 3B, Room 12' : 'e.g. Crypt, Stronghold, Chamber'}
                   className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500"
                 />
               </div>
@@ -413,15 +432,116 @@ export const EditEntityModal: React.FC<EditEntityModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-neutral-400 mb-1">Sensory Box / Read-Aloud Text</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-neutral-400">Sensory Box / Read-Aloud Text</label>
+                <span className="text-[11px] text-neutral-500 italic">Obvious contents can be mentioned here</span>
+              </div>
               <textarea
                 rows={3}
                 value={attributes.sensoryBox || ''}
                 onChange={(e) => handleAttrChange('sensoryBox', e.target.value)}
-                placeholder="What players see, smell, hear as they enter..."
+                placeholder="What players see, smell, hear as they enter... (Mention obvious contents here)"
                 className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500 italic"
               />
+              <p className="mt-1 text-[11px] text-neutral-400">
+                💡 Suggestion: Obvious contents can be mentioned in the sensory box if obvious upon entering.
+              </p>
             </div>
+
+            {/* Contents Attribute for Room / Area */}
+            {Boolean(entity.entityType === 'area' || attributes.contents !== undefined) && (() => {
+              const contentsList: string[] = Array.isArray(attributes.contents)
+                ? attributes.contents
+                : (typeof attributes.contents === 'string'
+                    ? attributes.contents
+                        .split(/\r?\n/)
+                        .map((s) => s.trim().replace(/^[-*•]\s*/, ''))
+                        .filter(Boolean)
+                    : []);
+
+              const handleSuggestInSensoryBox = () => {
+                const validItems = contentsList.filter((s) => s.trim().length > 0);
+                if (validItems.length === 0) return;
+                const currentBox = (attributes.sensoryBox || '').trim();
+                const contentsPhrase = `Visible within: ${validItems.join(', ')}.`;
+                const newBox = currentBox ? `${currentBox} ${contentsPhrase}` : contentsPhrase;
+                handleAttrChange('sensoryBox', newBox);
+              };
+
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-400">
+                        Contents / Room Features ({contentsList.length})
+                      </label>
+                      <p className="text-[11px] text-neutral-500">
+                        Notable items, furnishings, or creatures (bullet list if multiple).
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {contentsList.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleSuggestInSensoryBox}
+                          title="Mention obvious contents in Sensory Box"
+                          className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[11px] font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <Sparkles className="w-3 h-3 text-amber-400" /> Mention in Sensory Box
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleAttrChange('contents', [...contentsList, '']);
+                        }}
+                        className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-medium flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" /> Add Item
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {contentsList.map((item: string, idx: number) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <span className="w-5 text-center text-xs font-mono font-bold text-neutral-500 shrink-0">
+                          •
+                        </span>
+                        <input
+                          type="text"
+                          value={item}
+                          onChange={(e) => {
+                            const copy = [...contentsList];
+                            copy[idx] = e.target.value;
+                            handleAttrChange('contents', copy);
+                          }}
+                          placeholder={`Content item #${idx + 1} (e.g. Iron cage, Altar of bone, Sluice gate)...`}
+                          className="flex-1 px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const copy = contentsList.filter((_, i) => i !== idx);
+                            handleAttrChange('contents', copy);
+                          }}
+                          className="text-neutral-500 hover:text-red-400 p-1 cursor-pointer"
+                          title="Delete item"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+
+                    {contentsList.length === 0 && (
+                      <div className="p-3 border border-dashed border-neutral-800 rounded text-center text-xs text-neutral-500">
+                        No contents listed yet. Click &ldquo;Add Item&rdquo; to add furnishings, items, or creatures.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             <div>
               <label className="block text-xs font-semibold text-neutral-400 mb-1">Environmental Hazards</label>
@@ -544,6 +664,389 @@ export const EditEntityModal: React.FC<EditEntityModalProps> = ({
             </div>
           </div>
         );
+
+      case 'random_event_list': {
+        const isClock = (attributes.eventListType || attributes.eventType || attributes.listType) === 'progress_clock';
+        const segments = Math.max(2, Math.min(24, attributes.segments || 4));
+        const currentProgress = Math.max(0, Math.min(segments, attributes.currentProgress ?? 0));
+        const entries = Array.isArray(attributes.entries) ? attributes.entries : [];
+
+        return (
+          <div className="space-y-4">
+            {/* Version Switcher: Random Event Table vs Progress Clock */}
+            <div>
+              <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
+                Event List Type
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleAttrChange('eventListType', 'random_event')}
+                  className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                    !isClock
+                      ? 'bg-indigo-600 border-indigo-500 text-white shadow-sm'
+                      : 'bg-neutral-900 border-neutral-700 text-neutral-300 hover:bg-neutral-800'
+                  }`}
+                >
+                  <Dice5 className="w-4 h-4" />
+                  <span>Random Event Table</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleAttrsChange({
+                      eventListType: 'progress_clock',
+                      segments: attributes.segments || 4,
+                    });
+                  }}
+                  className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                    isClock
+                      ? 'bg-indigo-600 border-indigo-500 text-white shadow-sm'
+                      : 'bg-neutral-900 border-neutral-700 text-neutral-300 hover:bg-neutral-800'
+                  }`}
+                >
+                  <Clock className="w-4 h-4" />
+                  <span>Progress Clock</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Version 1: Random Event Table Fields */}
+            {!isClock && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-400 mb-1">
+                      Dice Formula
+                    </label>
+                    <input
+                      type="text"
+                      value={attributes.diceFormula || '1d6'}
+                      onChange={(e) => handleAttrChange('diceFormula', e.target.value)}
+                      placeholder="e.g. 1d6, 1d20, 2d6"
+                      className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 font-mono focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-400 mb-1">
+                      Frequency / Trigger Condition
+                    </label>
+                    <input
+                      type="text"
+                      value={attributes.frequencyTrigger || ''}
+                      onChange={(e) => handleAttrChange('frequencyTrigger', e.target.value)}
+                      placeholder="e.g. Every 2 hours, On entering room"
+                      className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Random Event Entries */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider">
+                      Event Table Entries ({entries.length})
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextRoll = entries.length + 1;
+                        handleAttrChange('entries', [
+                          ...entries,
+                          { roll: nextRoll, title: `Event #${nextRoll}`, description: '' },
+                        ]);
+                      }}
+                      className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-medium flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" /> Add Event
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {entries.map((item: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="p-2.5 rounded bg-neutral-900 border border-neutral-800 space-y-2 text-xs"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs text-neutral-400">Roll:</span>
+                            <input
+                              type="text"
+                              value={Array.isArray(item.roll) ? item.roll.join('-') : (item.roll ?? idx + 1)}
+                              onChange={(e) => {
+                                const copy = [...entries];
+                                const raw = e.target.value.trim();
+                                copy[idx] = {
+                                  ...copy[idx],
+                                  roll: raw.includes('-')
+                                    ? raw.split('-').map((n: string) => Number(n.trim())).filter((n: number) => !isNaN(n))
+                                    : isNaN(Number(raw)) ? raw : Number(raw),
+                                };
+                                handleAttrChange('entries', copy);
+                              }}
+                              className="w-16 px-1.5 py-0.5 bg-neutral-950 border border-neutral-700 rounded font-mono text-xs text-neutral-100 text-center"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const copy = entries.filter((_: any, i: number) => i !== idx);
+                              handleAttrChange('entries', copy);
+                            }}
+                            className="text-neutral-500 hover:text-red-400 p-1 cursor-pointer"
+                            title="Delete entry"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          value={item.title || ''}
+                          onChange={(e) => {
+                            const copy = [...entries];
+                            copy[idx] = { ...copy[idx], title: e.target.value };
+                            handleAttrChange('entries', copy);
+                          }}
+                          placeholder="Event Title..."
+                          className="w-full px-2 py-1 bg-neutral-950 border border-neutral-800 rounded text-xs text-neutral-100 font-semibold"
+                        />
+                        <textarea
+                          rows={2}
+                          value={item.description || ''}
+                          onChange={(e) => {
+                            const copy = [...entries];
+                            copy[idx] = { ...copy[idx], description: e.target.value };
+                            handleAttrChange('entries', copy);
+                          }}
+                          placeholder="Event description and details..."
+                          className="w-full px-2 py-1 bg-neutral-950 border border-neutral-800 rounded text-xs text-neutral-100"
+                        />
+                      </div>
+                    ))}
+                    {entries.length === 0 && (
+                      <div className="p-4 border border-dashed border-neutral-800 rounded text-center text-xs text-neutral-500">
+                        No events in table. Click &ldquo;Add Event&rdquo; to populate this table.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Version 2: Progress Clock Fields */}
+            {isClock && (
+              <>
+                {/* Segments Preset Selector */}
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
+                    Clock Segments / Size
+                  </label>
+                  <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                    {[4, 6, 8, 10, 12].map((seg) => (
+                      <button
+                        key={seg}
+                        type="button"
+                        onClick={() => {
+                          handleAttrChange('segments', seg);
+                          if (currentProgress > seg) handleAttrChange('currentProgress', seg);
+                        }}
+                        className={`px-3 py-1 rounded text-xs font-mono font-bold border transition-colors cursor-pointer ${
+                          segments === seg
+                            ? 'bg-indigo-600 border-indigo-500 text-white'
+                            : 'bg-neutral-900 border-neutral-700 text-neutral-300 hover:bg-neutral-800'
+                        }`}
+                      >
+                        {seg} Slices
+                      </button>
+                    ))}
+                    <div className="flex items-center gap-1 ml-auto">
+                      <span className="text-xs text-neutral-400 font-mono">Custom:</span>
+                      <input
+                        type="number"
+                        min={2}
+                        max={24}
+                        value={segments}
+                        onChange={(e) => {
+                          const val = Math.max(2, Math.min(24, Number(e.target.value) || 4));
+                          handleAttrChange('segments', val);
+                          if (currentProgress > val) handleAttrChange('currentProgress', val);
+                        }}
+                        className="w-16 px-2 py-1 bg-neutral-900 border border-neutral-700 rounded text-xs font-mono text-neutral-100 text-center"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Current Progress & Interactive Preview */}
+                <div className="p-3 bg-neutral-900 rounded-lg border border-neutral-800 flex items-center gap-4">
+                  <ProgressClock
+                    segments={segments}
+                    currentProgress={currentProgress}
+                    size={72}
+                    interactive={true}
+                    onSegmentClick={(idx) => {
+                      const nextVal = idx + 1 === currentProgress ? idx : idx + 1;
+                      handleAttrChange('currentProgress', nextVal);
+                    }}
+                  />
+                  <div className="space-y-1.5 flex-1">
+                    <span className="text-xs font-semibold text-neutral-300 block">
+                      Current Progress / Ticks
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleAttrChange('currentProgress', Math.max(0, currentProgress - 1))}
+                        disabled={currentProgress === 0}
+                        className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 text-xs font-bold text-neutral-100 cursor-pointer"
+                      >
+                        -
+                      </button>
+                      <span className="font-mono text-sm font-bold text-neutral-100">
+                        {currentProgress} / {segments}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleAttrChange('currentProgress', Math.min(segments, currentProgress + 1))}
+                        disabled={currentProgress >= segments}
+                        className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 text-xs font-bold text-neutral-100 cursor-pointer"
+                      >
+                        +
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAttrChange('currentProgress', 0)}
+                        className="text-[10px] text-neutral-400 hover:text-neutral-200 ml-2 underline cursor-pointer"
+                      >
+                        Reset to 0
+                      </button>
+                    </div>
+                    <span className="text-[10px] text-neutral-500 block">
+                      Click slices on the clock or use buttons to adjust current progress.
+                    </span>
+                  </div>
+                </div>
+
+                {/* Trigger & Outcome */}
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-400 mb-1">
+                      Trigger / Tick Condition
+                    </label>
+                    <input
+                      type="text"
+                      value={attributes.frequencyTrigger || ''}
+                      onChange={(e) => handleAttrChange('frequencyTrigger', e.target.value)}
+                      placeholder="e.g. When players fail stealth, make loud noise, or take a short rest"
+                      className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-400 mb-1">
+                      Outcome / Consequence (When Clock Fills)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={attributes.outcome || ''}
+                      onChange={(e) => handleAttrChange('outcome', e.target.value)}
+                      placeholder="e.g. Full Alert: Castle guards lock all gates and unleash hounds..."
+                      className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Milestone Stages (Optional) */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider">
+                      Tick Stages / Milestones ({entries.length})
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextStep = entries.length + 1;
+                        handleAttrChange('entries', [
+                          ...entries,
+                          { roll: nextStep, title: `Stage ${nextStep}`, description: '' },
+                        ]);
+                      }}
+                      className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-medium flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" /> Add Stage
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                    {entries.map((item: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="p-2.5 rounded bg-neutral-900 border border-neutral-800 space-y-2 text-xs"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs text-neutral-400">Step/Tick:</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={segments}
+                              value={item.roll ?? idx + 1}
+                              onChange={(e) => {
+                                const copy = [...entries];
+                                copy[idx] = { ...copy[idx], roll: Number(e.target.value) || (idx + 1) };
+                                handleAttrChange('entries', copy);
+                              }}
+                              className="w-16 px-1.5 py-0.5 bg-neutral-950 border border-neutral-700 rounded font-mono text-xs text-neutral-100 text-center"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const copy = entries.filter((_: any, i: number) => i !== idx);
+                              handleAttrChange('entries', copy);
+                            }}
+                            className="text-neutral-500 hover:text-red-400 p-1 cursor-pointer"
+                            title="Delete stage"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          value={item.title || ''}
+                          onChange={(e) => {
+                            const copy = [...entries];
+                            copy[idx] = { ...copy[idx], title: e.target.value };
+                            handleAttrChange('entries', copy);
+                          }}
+                          placeholder="Stage Title (e.g. Footsteps in the dark)..."
+                          className="w-full px-2 py-1 bg-neutral-950 border border-neutral-800 rounded text-xs text-neutral-100 font-semibold"
+                        />
+                        <textarea
+                          rows={2}
+                          value={item.description || ''}
+                          onChange={(e) => {
+                            const copy = [...entries];
+                            copy[idx] = { ...copy[idx], description: e.target.value };
+                            handleAttrChange('entries', copy);
+                          }}
+                          placeholder="What changes in the fictional state when this tick is reached?"
+                          className="w-full px-2 py-1 bg-neutral-950 border border-neutral-800 rounded text-xs text-neutral-100"
+                        />
+                      </div>
+                    ))}
+                    {entries.length === 0 && (
+                      <div className="p-3 border border-dashed border-neutral-800 rounded text-center text-xs text-neutral-500">
+                        Optional: Add stage milestones that describe what happens at each tick.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        );
+      }
 
       case 'image':
         return (
@@ -745,14 +1248,19 @@ export const EditEntityModal: React.FC<EditEntityModalProps> = ({
         <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-800 bg-[#1e2028]">
           <div className="flex items-center gap-2.5 min-w-0">
             <span className="p-1.5 rounded-lg bg-indigo-950/60 border border-indigo-700/50 text-indigo-400">
-              {getEntityIcon(entity.entityType, 'w-4 h-4')}
+              {getEntityIcon(entity.entityType, 'w-4 h-4', attributes)}
             </span>
             <div className="min-w-0">
               <h2 className="text-sm font-bold text-neutral-100 truncate">
-                Edit Element: {entity.name}
+                Edit Element: {name || entity.name}
               </h2>
               <span className="text-[10px] text-neutral-400 uppercase font-mono tracking-wider">
-                Type: {entity.entityType.replace(/_/g, ' ')}
+                Type:{' '}
+                {entity.entityType === 'random_event_list'
+                  ? (attributes.eventListType || attributes.eventType || attributes.listType) === 'progress_clock'
+                    ? 'Progress Clock'
+                    : 'Random Event List'
+                  : entity.entityType.replace(/_/g, ' ')}
               </span>
             </div>
           </div>

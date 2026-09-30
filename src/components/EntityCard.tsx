@@ -14,6 +14,7 @@ import {
   ChevronUp,
   AlertCircle,
   Dice5,
+  Clock,
   Image as ImageIcon,
   ArrowRightLeft,
   Plus,
@@ -26,6 +27,7 @@ import {
 } from 'lucide-react';
 import { EditEntityModal } from './EditEntityModal';
 import { FormattedText } from './FormattedText';
+import { ProgressClock } from './ProgressClock';
 
 interface EntityCardProps {
   placement: Placement;
@@ -161,21 +163,41 @@ export const EntityCard: React.FC<EntityCardProps> = ({
           </div>
         );
 
-      case 'trap':
+      case 'trap': {
+        const detectionClue = attrs.detectionClue || attrs.detection;
+        const disarmText = attrs.disarm || attrs.disarmMethod || attrs.howToDisarm;
         return (
           <div className="space-y-1.5 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 font-mono text-[10px] font-bold">
-                DC {attrs.detectionDc ?? 12} Detection
-              </span>
-              <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-700 dark:text-blue-300 font-mono text-[10px] font-bold">
-                DC {attrs.disarmDc ?? 12} Disarm
-              </span>
-            </div>
+            {(attrs.detectionDc !== undefined || attrs.disarmDc !== undefined) && !detectionClue && !disarmText && (
+              <div className="flex items-center gap-2">
+                {attrs.detectionDc !== undefined && (
+                  <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 font-mono text-[10px] font-bold">
+                    DC {attrs.detectionDc} Detection
+                  </span>
+                )}
+                {attrs.disarmDc !== undefined && (
+                  <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-700 dark:text-blue-300 font-mono text-[10px] font-bold">
+                    DC {attrs.disarmDc} Disarm
+                  </span>
+                )}
+              </div>
+            )}
             <div>
               <span className="font-semibold opacity-75">Trigger:</span>{' '}
               <FormattedText content={attrs.trigger || 'Pressure mechanism'} />
             </div>
+            {detectionClue && (
+              <div>
+                <span className="font-semibold opacity-75">Detection Clue:</span>{' '}
+                <FormattedText content={detectionClue} />
+              </div>
+            )}
+            {disarmText && (
+              <div>
+                <span className="font-semibold opacity-75">Disarm:</span>{' '}
+                <FormattedText content={disarmText} />
+              </div>
+            )}
             {attrs.effect && (
               <div className="opacity-90 leading-relaxed">
                 <span className="font-semibold opacity-75">Effect:</span>{' '}
@@ -190,6 +212,7 @@ export const EntityCard: React.FC<EntityCardProps> = ({
             )}
           </div>
         );
+      }
 
       case 'item':
       case 'treasure':
@@ -243,6 +266,11 @@ export const EntityCard: React.FC<EntityCardProps> = ({
       case 'area':
         return (
           <div className="space-y-1.5 text-xs">
+            {attrs.mapKey && (
+              <span className="inline-block px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-mono text-[10px] font-bold tracking-wider mr-1.5">
+                {attrs.mapKey}
+              </span>
+            )}
             {attrs.siteType && (
               <div className="font-semibold opacity-80 uppercase text-[10px] tracking-wider">
                 {attrs.siteType}
@@ -254,6 +282,38 @@ export const EntityCard: React.FC<EntityCardProps> = ({
                 <FormattedText content={attrs.sensoryBox} />
               </blockquote>
             )}
+            {(() => {
+              const rawContents = attrs.contents;
+              if (!rawContents) return null;
+
+              let items: string[] = [];
+              if (Array.isArray(rawContents)) {
+                items = rawContents.map((item) => String(item).trim()).filter(Boolean);
+              } else if (typeof rawContents === 'string') {
+                items = rawContents
+                  .split(/\r?\n/)
+                  .map((line) => line.trim().replace(/^[-*•]\s*/, ''))
+                  .filter(Boolean);
+              }
+
+              if (items.length === 0) return null;
+
+              if (items.length === 1) {
+                return (
+                  <div>
+                    <span className="font-semibold opacity-75">Contents:</span>{' '}
+                    <FormattedText content={items[0]} />
+                  </div>
+                );
+              }
+
+              return (
+                <div>
+                  <span className="font-semibold opacity-75 block mb-0.5">Contents:</span>
+                  <FormattedText content={items} listStyle="bullet" />
+                </div>
+              );
+            })()}
             {attrs.entranceAccess && (
               <div>
                 <span className="font-semibold opacity-75">Access:</span>{' '}
@@ -313,9 +373,15 @@ export const EntityCard: React.FC<EntityCardProps> = ({
             <div className="space-y-1.5">
               {(attrs.entries || []).map((entry: any, idx: number) => {
                 const rollVal = Array.isArray(entry.roll) ? entry.roll.join('-') : (entry.roll ?? idx + 1);
-                const veracity = entry.veracity || 'True';
-                const isDeceptive = veracity.includes('False') || veracity.includes('Deceptive');
-                const isPartial = veracity.includes('Partial');
+                const veracity = String(entry.veracity || 'True');
+                const vLower = veracity.toLowerCase();
+                const isDeceptive = vLower.includes('false') || vLower.includes('deceptive');
+                const isPartial = vLower.includes('partial');
+
+                const sourceDcStr = entry.sourceDc != null ? String(entry.sourceDc).trim() : '';
+                const hasValidSourceDc =
+                  sourceDcStr !== '' &&
+                  !['0', 'o', 'none', 'null', 'undefined', 'false'].includes(sourceDcStr.toLowerCase());
 
                 return (
                   <div
@@ -342,7 +408,7 @@ export const EntityCard: React.FC<EntityCardProps> = ({
                         >
                           {veracity}
                         </span>
-                        {entry.sourceDc && <span className="opacity-70">Source: {entry.sourceDc}</span>}
+                        {hasValidSourceDc && <span className="opacity-70">Source: {sourceDcStr}</span>}
                       </div>
                     </div>
                   </div>
@@ -355,8 +421,175 @@ export const EntityCard: React.FC<EntityCardProps> = ({
           </div>
         );
 
-      // Structured Random Event Table Layout (fixes raw JSON display!)
-      case 'random_event_list':
+      // Event List: Random Event Table OR Progress Clock Layout
+      case 'random_event_list': {
+        const isClock = (attrs.eventListType || attrs.eventType || attrs.listType) === 'progress_clock';
+
+        if (isClock) {
+          const segments = Math.max(2, attrs.segments || 4);
+          const currentProgress = Math.max(0, Math.min(segments, attrs.currentProgress ?? 0));
+          const isFilled = currentProgress >= segments;
+
+          const handleUpdateProgress = (newVal: number) => {
+            const clamped = Math.max(0, Math.min(segments, newVal));
+            store.updateEntity(entity.id, {
+              attributes: {
+                ...attrs,
+                currentProgress: clamped,
+              },
+            });
+          };
+
+          return (
+            <div className="space-y-3 text-xs">
+              {/* Header: Clock Progress & Trigger Condition */}
+              <div className="flex items-center justify-between text-[11px] font-mono opacity-80 pb-1 border-b border-current/10">
+                <span className="flex items-center gap-1.5 font-semibold">
+                  <Clock className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>Progress Clock ({currentProgress}/{segments})</span>
+                </span>
+                {attrs.frequencyTrigger && (
+                  <span className="text-[10px] opacity-75">{attrs.frequencyTrigger}</span>
+                )}
+              </div>
+
+              {/* Visual Clock + Quick Step Controls */}
+              <div className="flex items-center gap-3 py-1">
+                <ProgressClock
+                  segments={segments}
+                  currentProgress={currentProgress}
+                  size={68}
+                  interactive={true}
+                  onSegmentClick={(idx) => {
+                    const nextVal = idx + 1 === currentProgress ? idx : idx + 1;
+                    handleUpdateProgress(nextVal);
+                  }}
+                />
+
+                <div className="flex-1 space-y-1.5 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleUpdateProgress(currentProgress - 1);
+                      }}
+                      disabled={currentProgress === 0}
+                      title="Rewind clock by 1 tick"
+                      className="px-2 py-0.5 rounded bg-black/5 dark:bg-white/5 border border-current/10 font-bold hover:bg-black/10 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      -
+                    </button>
+                    <span className="font-mono font-bold text-sm">
+                      {currentProgress} / {segments}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleUpdateProgress(currentProgress + 1);
+                      }}
+                      disabled={currentProgress >= segments}
+                      title="Advance clock by 1 tick"
+                      className="px-2 py-0.5 rounded bg-black/5 dark:bg-white/5 border border-current/10 font-bold hover:bg-black/10 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      +
+                    </button>
+
+                    {isFilled ? (
+                      <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-600 dark:text-red-400 font-bold text-[10px] uppercase tracking-wider animate-pulse">
+                        Filled!
+                      </span>
+                    ) : (
+                      <span className="text-[10px] opacity-60">
+                        {segments - currentProgress} left
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Pip bar tracker */}
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: segments }).map((_, i) => (
+                      <div
+                        key={i}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const nextVal = i + 1 === currentProgress ? i : i + 1;
+                          handleUpdateProgress(nextVal);
+                        }}
+                        className={`h-2 flex-1 rounded-sm cursor-pointer transition-colors ${
+                          i < currentProgress
+                            ? isFilled
+                              ? 'bg-red-500 dark:bg-red-400'
+                              : 'bg-indigo-600 dark:bg-indigo-400'
+                            : 'bg-black/10 dark:bg-white/10 border border-current/10'
+                        }`}
+                        title={`Tick ${i + 1} of ${segments}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Outcome / Consequence */}
+              {attrs.outcome && (
+                <div
+                  className={`p-2 rounded border text-xs flex items-start gap-2 ${
+                    isFilled
+                      ? 'bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-300 font-semibold'
+                      : 'bg-black/5 dark:bg-white/5 border-current/10 opacity-90'
+                  }`}
+                >
+                  <AlertCircle className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${isFilled ? 'text-red-500' : 'opacity-70'}`} />
+                  <div>
+                    <span className="font-semibold">{isFilled ? 'Consequence Triggered:' : 'When Filled:'}</span>{' '}
+                    <FormattedText content={attrs.outcome} />
+                  </div>
+                </div>
+              )}
+
+              {/* Stage / Milestone entries */}
+              {Array.isArray(attrs.entries) && attrs.entries.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <div className="text-[10px] font-bold uppercase tracking-wider opacity-60">
+                    Escalation Stages ({attrs.entries.length})
+                  </div>
+                  {attrs.entries.map((entry: any, idx: number) => {
+                    const stepNum = Array.isArray(entry.roll) ? entry.roll[0] : (entry.roll ?? idx + 1);
+                    const isReached = currentProgress >= stepNum;
+                    return (
+                      <div
+                        key={idx}
+                        className={`p-1.5 rounded border flex items-start gap-2 transition-opacity ${
+                          isReached
+                            ? 'bg-indigo-500/10 border-indigo-500/30 opacity-100 font-medium'
+                            : 'bg-black/5 dark:bg-white/5 border-current/10 opacity-60'
+                        }`}
+                      >
+                        <span
+                          className={`px-1.5 py-0.5 rounded font-mono text-[10px] font-bold flex-shrink-0 ${
+                            isReached
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-black/10 dark:bg-white/10 opacity-70'
+                          }`}
+                        >
+                          Step {stepNum}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          {entry.title && <div className="font-semibold text-[11px]">{entry.title}</div>}
+                          {entry.description && (
+                            <FormattedText content={entry.description} className="opacity-90 leading-snug" />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        }
+
         return (
           <div className="space-y-2 text-xs">
             <div className="flex items-center justify-between text-[11px] font-mono opacity-80 pb-1 border-b border-current/10">
@@ -390,6 +623,7 @@ export const EntityCard: React.FC<EntityCardProps> = ({
             </div>
           </div>
         );
+      }
 
       // Image Module Layout
       case 'image':
@@ -445,19 +679,13 @@ export const EntityCard: React.FC<EntityCardProps> = ({
 
         return (
           <div className="space-y-2 text-xs">
-            {/* Header controls: Context & List Style toggle */}
-            <div className="flex items-center justify-between gap-2 pb-1 border-b border-current/10">
-              <span className="text-[10px] font-semibold uppercase tracking-wider opacity-60 flex items-center gap-1">
-                {currentStyle === 'bullet' ? <List className="w-3 h-3" /> : <ListOrdered className="w-3 h-3" />}
-                <span>{currentStyle === 'bullet' ? 'Bullet List' : 'Numbered List'}</span>
-              </span>
-
-              {/* Interactive Toggle Button: Click to switch between bullets and numbers */}
+            {/* Interactive Toggle Button: Click to switch between bullets and numbers (hidden in print, no redundant list type label) */}
+            <div className="flex items-center justify-end no-print">
               <button
                 type="button"
                 onClick={handleToggleListStyle}
                 title={`Switch to ${currentStyle === 'bullet' ? 'Numbered (1. 2. 3.)' : 'Bullet (•)'} style`}
-                className="px-2 py-0.5 rounded text-[10px] font-medium bg-black/5 dark:bg-white/5 hover:bg-indigo-600 hover:text-white border border-current/10 transition-colors flex items-center gap-1 cursor-pointer no-print"
+                className="px-2 py-0.5 rounded text-[10px] font-medium bg-black/5 dark:bg-white/5 hover:bg-indigo-600 hover:text-white border border-current/10 transition-colors flex items-center gap-1 cursor-pointer"
               >
                 {currentStyle === 'bullet' ? (
                   <>
@@ -573,7 +801,7 @@ export const EntityCard: React.FC<EntityCardProps> = ({
 
           {/* Entity Icon & Type Badge (shown only when card is active) */}
           {isActive && (
-            <span className="opacity-70 shrink-0">{getEntityIcon(entity.entityType)}</span>
+            <span className="opacity-70 shrink-0">{getEntityIcon(entity.entityType, 'w-4 h-4', entity.attributes)}</span>
           )}
 
           {/* Editable Name (always shown by default, full width) */}

@@ -44,8 +44,21 @@ export function estimateEntityHeight(entity?: Entity, isCollapsed?: boolean): nu
   const attrs = entity.attributes || {};
 
   switch (entity.entityType) {
-    case 'rumor_list':
+    case 'rumor_list': {
+      const entries = Array.isArray(attrs.entries) ? attrs.entries : [];
+      baseHeight += 34; // Roll formula banner
+      baseHeight += Math.max(entries.length, 1) * 70; // Entry items
+      return Math.max(baseHeight, 140);
+    }
     case 'random_event_list': {
+      const isClock = (attrs.eventListType || attrs.eventType || attrs.listType) === 'progress_clock';
+      if (isClock) {
+        baseHeight += 95; // Clock visual + step buttons
+        if (attrs.outcome) baseHeight += 45;
+        const entries = Array.isArray(attrs.entries) ? attrs.entries : [];
+        baseHeight += entries.length * 50;
+        return Math.max(baseHeight, 150);
+      }
       const entries = Array.isArray(attrs.entries) ? attrs.entries : [];
       baseHeight += 34; // Roll formula banner
       baseHeight += Math.max(entries.length, 1) * 70; // Entry items
@@ -54,9 +67,10 @@ export function estimateEntityHeight(entity?: Entity, isCollapsed?: boolean): nu
     case 'region':
     case 'adventure_site':
     case 'area': {
-      const textLen = (attrs.loreHistory || attrs.flavorText || attrs.environmentalHazards || attrs.entranceAccess || '').length;
+      const textLen = (attrs.loreHistory || attrs.flavorText || attrs.environmentalHazards || attrs.entranceAccess || attrs.sensoryBox || '').length;
       const attrCount = ['climateTerrain', 'factionsPolitics', 'travelMechanics', 'siteType', 'entranceAccess', 'environmentalHazards', 'areaType', 'lightingAcoustics'].filter((k) => !!attrs[k]).length;
-      baseHeight += attrCount * 26;
+      const contentsCount = Array.isArray(attrs.contents) ? attrs.contents.length : (attrs.contents ? 1 : 0);
+      baseHeight += attrCount * 26 + contentsCount * 20;
       baseHeight += Math.ceil(textLen / 45) * 18;
       return Math.max(baseHeight, 150);
     }

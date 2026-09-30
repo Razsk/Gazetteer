@@ -426,7 +426,7 @@ export const SearchReplaceModal: React.FC<SearchReplaceModalProps> = ({
                       {/* Entity Name & Type Badge */}
                       {entity && (
                         <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-neutral-800/70 text-neutral-300 text-[11px]">
-                          {getEntityIcon(entity.entityType, 'w-3 h-3 text-amber-400')}
+                          {getEntityIcon(entity.entityType, 'w-3 h-3 text-amber-400', entity.attributes)}
                           <span className="font-semibold text-neutral-200">{entity.name}</span>
                         </span>
                       )}

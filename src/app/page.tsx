@@ -73,8 +73,8 @@ export default function Home() {
       const trap = createDefaultEntity(store.currentScenario.id, 'trap', 'Serpent-Spit Crossbow');
       trap.attributes = {
         trigger: 'Taut algae-coated chord across submerged corridor floor.',
-        detectionDc: 13,
-        disarmDc: 12,
+        detectionClue: 'Greenish copper wire glistening faintly beneath murky swamp runoff.',
+        disarm: 'Carefully snip the wire with shears while securing the tension peg.',
         effect: 'Fires venom-tipped iron bolt: 1d10 piercing + DC 13 Con save or 2d6 poison damage.',
         resetConditions: 'Manual reload behind brick false wall.',
       };

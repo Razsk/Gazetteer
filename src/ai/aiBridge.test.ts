@@ -194,6 +194,36 @@ Hope this helps!
       expect(result.error).toBeDefined();
     });
 
+    it('sanitizes rumor sourceDc values removing stray 0, "0", or "o"', () => {
+      const rawAiReply = `
+\`\`\`json
+{
+  "pageTitle": "King's Secrets",
+  "reasoningSummary": "Rumor mill elements",
+  "newEntities": [
+    {
+      "name": "Court Rumors",
+      "entityType": "rumor_list",
+      "attributes": {
+        "entries": [
+          { "roll": 1, "statement": "Rumor A", "veracity": "True", "source_dc": 0 },
+          { "roll": 2, "statement": "Rumor B", "veracity": "False", "source_dc": "0" },
+          { "roll": 3, "statement": "Rumor C", "veracity": "False", "source_dc": "DC 14 Insight" }
+        ]
+      }
+    }
+  ]
+}
+\`\`\`
+`;
+      const result = parseElementGenerationResponse(rawAiReply);
+      expect(result.success).toBe(true);
+      const entries = result.data.newEntities[0].attributes.entries;
+      expect(entries[0].sourceDc).toBe('');
+      expect(entries[1].sourceDc).toBe('');
+      expect(entries[2].sourceDc).toBe('DC 14 Insight');
+    });
+
     it('provides a high-fidelity sample response connected to context', () => {
       const sample = getSampleGenerationResponse(sampleContext, [
         { name: 'Kaelen', entityType: 'npc' },

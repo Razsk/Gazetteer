@@ -77,8 +77,10 @@ export type ItemAttributes = z.infer<typeof ItemAttributesSchema>;
 // 5. Trap Attributes
 export const TrapAttributesSchema = z.object({
   trigger: z.string().default('Pressure plate'),
-  detectionDc: z.number().int().default(12),
-  disarmDc: z.number().int().default(12),
+  detectionClue: z.string().default(''),
+  disarm: z.string().default(''),
+  detectionDc: z.number().int().optional(),
+  disarmDc: z.number().int().optional(),
   effect: z.string().default(''),
   resetConditions: z.string().default('Manual'),
   customFields: CustomFieldsSchema,
@@ -122,7 +124,22 @@ export const AreaAttributesSchema = z.object({
   mapKey: z.string().default('1'),
   dimensionsLighting: z.string().default(''),
   sensoryBox: z.string().default(''),
-  contents: z.array(z.string()).default([]),
+  contents: z
+    .union([z.array(z.string()), z.string()])
+    .transform((val) => {
+      if (Array.isArray(val)) {
+        return val.map((s) => String(s).trim().replace(/^[-*•]\s*/, '')).filter(Boolean);
+      }
+      if (typeof val === 'string') {
+        const split = val
+          .split(/\r?\n/)
+          .map((s) => s.trim().replace(/^[-*•]\s*/, ''))
+          .filter(Boolean);
+        return split.length > 0 ? split : (val.trim() ? [val.trim()] : []);
+      }
+      return [];
+    })
+    .default([]),
   exitsConnections: z.string().default(''),
   customFields: CustomFieldsSchema,
 });
@@ -130,13 +147,18 @@ export type AreaAttributes = z.infer<typeof AreaAttributesSchema>;
 
 // 10. Random Event List Attributes
 export const RandomEventListAttributesSchema = z.object({
+  eventListType: z.enum(['random_event', 'progress_clock']).default('random_event'),
   diceFormula: z.string().default('1d6'),
   frequencyTrigger: z.string().default('Every 2 hours'),
+  segments: z.number().int().min(2).default(4),
+  currentProgress: z.number().int().min(0).default(0),
+  clockType: z.string().default('Escalation'),
+  outcome: z.string().default(''),
   entries: z.array(
     z.object({
-      roll: z.union([z.number(), z.array(z.number())]),
-      title: z.string(),
-      description: z.string(),
+      roll: z.union([z.number(), z.array(z.number())]).default(1),
+      title: z.string().default(''),
+      description: z.string().default(''),
       linkedEntities: z.array(z.string()).optional(),
     })
   ).default([]),
@@ -219,7 +241,7 @@ export const EntitySchema = z.object({
 
 export type Entity = z.infer<typeof EntitySchema>;
 
-export function createDefaultAttributes(type: EntityType): Record<string, any> {
+export function createDefaultAttributes(type: EntityType, subtype?: string): Record<string, any> {
   switch (type) {
     case 'npc':
       return NpcAttributesSchema.parse({});
@@ -240,7 +262,34 @@ export function createDefaultAttributes(type: EntityType): Record<string, any> {
     case 'area':
       return AreaAttributesSchema.parse({});
     case 'random_event_list':
-      return RandomEventListAttributesSchema.parse({});
+      if (subtype === 'progress_clock') {
+        return RandomEventListAttributesSchema.parse({
+          eventListType: 'progress_clock',
+          segments: 4,
+          currentProgress: 0,
+          frequencyTrigger: 'On failed stealth or noisy action',
+          outcome: 'Castle alarm triggers and guards seal all exits',
+          entries: [
+            { roll: 1, title: 'Suspicion', description: 'Nearby guards hear an unusual noise and pause.' },
+            { roll: 2, title: 'Investigation', description: 'Two guards leave their posts with lanterns to check the corridor.' },
+            { roll: 3, title: 'Heightened Alert', description: 'Guards ready weapons and call out for confirmation.' },
+            { roll: 4, title: 'Full Alarm', description: 'The alarm gong is struck and reinforcements are summoned.' },
+          ],
+        });
+      }
+      return RandomEventListAttributesSchema.parse({
+        eventListType: 'random_event',
+        diceFormula: '1d6',
+        frequencyTrigger: 'Every 2 hours',
+        entries: [
+          { roll: 1, title: 'Distant Howls', description: 'Eerie cries echo through the fog, putting everyone on edge.' },
+          { roll: 2, title: 'Wandering Patrol', description: 'A squad of 1d4 scouts approaches cautiously.' },
+          { roll: 3, title: 'Sudden Weather Shift', description: 'Heavy rain or fog rolls in, reducing visibility.' },
+          { roll: 4, title: 'Ominous Discovery', description: 'The party finds a freshly abandoned campsite with signs of struggle.' },
+          { roll: 5, title: 'Fleeing Wildlife', description: 'Startled beasts rush past, fleeing something deeper in the wilds.' },
+          { roll: 6, title: 'Dead Silence', description: 'An unnatural stillness settles over the surrounding area.' },
+        ],
+      });
     case 'rumor_list':
       return RumorListAttributesSchema.parse({});
     case 'image':
@@ -250,7 +299,12 @@ export function createDefaultAttributes(type: EntityType): Record<string, any> {
   }
 }
 
-export function createDefaultEntity(scenarioId: string, entityType: EntityType, name?: string): Entity {
+export function createDefaultEntity(
+  scenarioId: string,
+  entityType: EntityType,
+  name?: string,
+  subtype?: string
+): Entity {
   const defaultNames: Record<EntityType, string> = {
     npc: 'New NPC',
     enemy: 'New Enemy',
@@ -261,7 +315,7 @@ export function createDefaultEntity(scenarioId: string, entityType: EntityType, 
     region: 'New Region',
     adventure_site: 'New Adventure Site',
     area: 'New Area',
-    random_event_list: 'New Wandering Encounters',
+    random_event_list: subtype === 'progress_clock' ? 'New Progress Clock' : 'New Wandering Encounters',
     rumor_list: 'New Rumor Table',
     image: 'New Image',
     generic_list: 'New Generic List',
@@ -273,7 +327,7 @@ export function createDefaultEntity(scenarioId: string, entityType: EntityType, 
     scenarioId,
     entityType,
     name: name || defaultNames[entityType],
-    attributes: createDefaultAttributes(entityType),
+    attributes: createDefaultAttributes(entityType, subtype),
     createdAt: now,
     updatedAt: now,
   };

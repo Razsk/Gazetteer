@@ -3,14 +3,20 @@
 import React, { useState } from 'react';
 import { useScenarioStore } from '@/store/scenarioStore';
 import { EntityType, createDefaultEntity } from '@/domain/entities';
-import { getEntityIcon } from './themeSkin';
+import { getEntityIcon, getEventListIcon } from './themeSkin';
 import { Plus, BookOpen, Layers, Settings, ChevronUp, ChevronDown, Pencil, Check, Download, Upload, RotateCcw, BookPlus, Sparkles } from 'lucide-react';
 import { EditEntityModal } from './EditEntityModal';
 import { NewScenarioModal } from './NewScenarioModal';
 
+interface PaletteTypeItem {
+  type: EntityType;
+  label: string;
+  eventListType?: 'random_event' | 'progress_clock';
+}
+
 const ENTITY_CATEGORIES: {
   title: string;
-  types: { type: EntityType; label: string }[];
+  types: PaletteTypeItem[];
 }[] = [
   {
     title: 'Macro & Geography',
@@ -45,7 +51,8 @@ const ENTITY_CATEGORIES: {
     title: 'Tables & Assets',
     types: [
       { type: 'generic_list', label: 'Generic List' },
-      { type: 'random_event_list', label: 'Random Events' },
+      { type: 'random_event_list', label: 'Random Events', eventListType: 'random_event' },
+      { type: 'random_event_list', label: 'Progress Clock', eventListType: 'progress_clock' },
       { type: 'image', label: 'Image Module' },
     ],
   },
@@ -126,11 +133,11 @@ export const ScenarioSidebar: React.FC<ScenarioSidebarProps> = ({ onOpenAiGenera
     }
   };
 
-  const handleAddElementToActivePage = (type: EntityType) => {
+  const handleAddElementToActivePage = (type: EntityType, subtype?: string) => {
     if (!store.currentScenario) return;
 
     // 1. Create canonical entity in library
-    const newEntity = createDefaultEntity(store.currentScenario.id, type);
+    const newEntity = createDefaultEntity(store.currentScenario.id, type, undefined, subtype);
     store.addEntity(newEntity);
 
     // 2. Place on active page
@@ -232,12 +239,16 @@ export const ScenarioSidebar: React.FC<ScenarioSidebarProps> = ({ onOpenAiGenera
                   <div className="grid grid-cols-1 gap-1">
                     {cat.types.map((t) => (
                       <button
-                        key={t.type}
-                        onClick={() => handleAddElementToActivePage(t.type)}
+                        key={`${t.type}-${t.eventListType || 'default'}`}
+                        onClick={() => handleAddElementToActivePage(t.type, t.eventListType)}
                         className="flex items-center justify-between px-2.5 py-1.5 rounded bg-neutral-900/80 hover:bg-neutral-800 text-neutral-200 hover:text-white border border-neutral-800 text-xs transition-colors"
                       >
                         <span className="flex items-center gap-2">
-                          <span className="opacity-70">{getEntityIcon(t.type, 'w-3.5 h-3.5')}</span>
+                          <span className="opacity-70">
+                            {t.eventListType
+                              ? getEventListIcon(t.eventListType, 'w-3.5 h-3.5')
+                              : getEntityIcon(t.type, 'w-3.5 h-3.5')}
+                          </span>
                           <span>{t.label}</span>
                         </span>
                         <Plus className="w-3.5 h-3.5 opacity-50" />
@@ -270,7 +281,7 @@ export const ScenarioSidebar: React.FC<ScenarioSidebarProps> = ({ onOpenAiGenera
                           className="flex-1 min-w-0 text-left flex items-center gap-2 truncate cursor-pointer hover:text-white"
                           title="Place synchronized instance on active page"
                         >
-                          <span className="opacity-60">{getEntityIcon(ent.entityType, 'w-3 h-3')}</span>
+                          <span className="opacity-60">{getEntityIcon(ent.entityType, 'w-3 h-3', ent.attributes)}</span>
                           <span className="truncate">{ent.name}</span>
                           {placedCount > 1 ? (
                             <span

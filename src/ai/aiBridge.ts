@@ -59,13 +59,13 @@ export const ALLOWED_FIELDS_BY_TYPE: Record<string, string[]> = {
   enemy: ['name', 'creatureType', 'challengeRating', 'hitPoints', 'armorClass', 'speed', 'actions', 'tactics', 'lore'],
   location: ['name', 'environmentType', 'sensoryDetails (sight, sound, smell)', 'pointsOfInterest', 'hazards', 'connectedLocations'],
   item: ['name', 'rarity', 'value', 'physicalDescription', 'mechanicalProperties', 'lore'],
-  trap: ['name', 'trigger', 'detectionDc', 'disarmDc', 'effect', 'resetConditions'],
+  trap: ['name', 'trigger', 'detectionClue', 'disarm', 'effect', 'resetConditions'],
   treasure: ['name', 'value', 'rarity', 'contents', 'hiddenCondition'],
   region: ['name', 'climateTerrain', 'factionsPolitics', 'travelMechanics', 'loreHistory', 'linkedSites'],
   adventure_site: ['name', 'siteType', 'entranceAccess', 'alertState', 'environmentalHazards', 'linkedAreas'],
-  area: ['name', 'mapKey', 'dimensionsLighting', 'sensoryBox', 'contents', 'exitsConnections'],
-  random_event_list: ['name', 'diceFormula', 'frequencyTrigger', 'entries (array of {roll, title, description, linkedEntities})'],
-  rumor_list: ['name', 'diceFormula', 'entries (array of {roll, statement, veracity, sourceDc, targetLink})'],
+  area: ['name', 'mapKey', 'dimensionsLighting', 'sensoryBox', 'contents (bullet list or array if multiple; obvious contents should also be mentioned in sensoryBox)', 'exitsConnections'],
+  random_event_list: ['name', 'eventListType ("random_event" or "progress_clock")', 'diceFormula', 'frequencyTrigger', 'segments (e.g. 4, 6, 8)', 'currentProgress', 'outcome', 'entries (array of {roll, title, description, linkedEntities})'],
+  rumor_list: ['name', 'diceFormula', 'entries (array of {roll, statement, veracity ("True", "Partially True", "False/Deceptive"), sourceDc (e.g. "DC 12 Insight" or empty string if none; do not use 0 or "0"), targetLink})'],
   image: ['name', 'prompt', 'negativePrompt', 'aspectRatio', 'stylePreset', 'caption', 'frameStyle', 'fitMode'],
   generic_list: ['name', 'context (explanation of what this list represents)', 'listStyle ("bullet" or "numbered")', 'items (array of string entries)'],
 };
@@ -112,8 +112,9 @@ ${JSON.stringify(targets, null, 2)}
 1. Return ONLY a single valid JSON object matching the JSON format below. Do not wrap in conversational text.
 2. In "updatedEntities", include an entry for each entity you are modifying with its exact "entityId".
 3. Inside "attributes", return the updated field values using the exact key names defined above. Do NOT invent new fields.
-4. If an attribute is unchanged, you may omit it or include its existing value.
-5. Provide a 1-2 sentence explanation of your changes in "reasoningSummary".
+4. For area/room entities: Provide "contents" (bullet list if multiple items). Obvious contents should also be mentioned in the "sensoryBox" read-aloud text.
+5. If an attribute is unchanged, you may omit it or include its existing value.
+6. Provide a 1-2 sentence explanation of your changes in "reasoningSummary".
 
 [REQUIRED JSON RESPONSE FORMAT]
 \`\`\`json
@@ -137,7 +138,12 @@ ${JSON.stringify(targets, null, 2)}
  */
 const KEY_NORMALIZE_MAP: Record<string, string> = {
   // Common
+  detection_clue: 'detectionClue',
+  detection: 'detectionClue',
   detection_dc: 'detectionDc',
+  disarm_method: 'disarm',
+  disarm_procedure: 'disarm',
+  how_to_disarm: 'disarm',
   disarm_dc: 'disarmDc',
   hit_points: 'hitPoints',
   armor_class: 'armorClass',
@@ -175,6 +181,31 @@ const KEY_NORMALIZE_MAP: Record<string, string> = {
   frame_style: 'frameStyle',
   fit_mode: 'fitMode',
 };
+
+/**
+ * Cleans entity attributes, ensuring rumor sourceDc values are valid strings and not stray 0, '0', or 'o' markers.
+ */
+export function sanitizeEntityAttributes(attrs: Record<string, any>): Record<string, any> {
+  const result = { ...attrs };
+  if (Array.isArray(result.entries)) {
+    result.entries = result.entries.map((entry: any) => {
+      if (!entry || typeof entry !== 'object') return entry;
+      const sanitized = { ...entry };
+      if (sanitized.sourceDc !== undefined || sanitized.source_dc !== undefined) {
+        const dcVal = sanitized.sourceDc ?? sanitized.source_dc;
+        const dcStr = dcVal != null ? String(dcVal).trim() : '';
+        if (['0', 'o', 'none', 'null', 'undefined', 'false', ''].includes(dcStr.toLowerCase())) {
+          sanitized.sourceDc = '';
+        } else {
+          sanitized.sourceDc = dcStr;
+        }
+        delete sanitized.source_dc;
+      }
+      return sanitized;
+    });
+  }
+  return result;
+}
 
 /**
  * Parses and validates an AI response from clipboard text.
@@ -218,7 +249,7 @@ export function parseClipboardResponse(rawText: string): {
 
       return {
         entityId,
-        attributes: normalizedAttrs,
+        attributes: sanitizeEntityAttributes(normalizedAttrs),
       };
     });
 
@@ -283,6 +314,10 @@ export function normalizeEntityType(raw: string): EntityType {
     random_events: 'random_event_list',
     random_table: 'random_event_list',
     event_list: 'random_event_list',
+    progress_clock: 'random_event_list',
+    clock: 'random_event_list',
+    countdown_clock: 'random_event_list',
+    countdown: 'random_event_list',
     rumor_list: 'rumor_list',
     rumors: 'rumor_list',
     rumours: 'rumor_list',
@@ -367,7 +402,8 @@ ${allFields}
 2. In "reasoningSummary", write 1-3 sentences describing how these elements fulfill the request and weave into the referenced lore/theme.
 3. In "newEntities", generate a cohesive set of elements to populate the new page.
 4. For each entity, specify "columnSpan" (use 2 for full-width headers like adventure_site, region, wide area maps, or large event tables; use 1 for NPCs, traps, enemies, items, etc.).
-5. Return ONLY a single valid JSON object matching the JSON response format below. No markdown explanations outside the code block.
+5. For room/area entities: Populate "contents" (bullet list if multiple items). Obvious contents should also be mentioned in the "sensoryBox" read-aloud text.
+6. Return ONLY a single valid JSON object matching the JSON response format below. No markdown explanations outside the code block.
 
 [REQUIRED JSON RESPONSE FORMAT]
 \`\`\`json
@@ -443,17 +479,35 @@ export function parseElementGenerationResponse(rawText: string): {
       }
 
       // Merge with default attributes to ensure schema conformity
-      const defaultAttrs = createDefaultAttributes(entityType);
+      const isClock = rawType.toLowerCase().includes('clock') || rawType.toLowerCase().includes('countdown') || normalizedAttrs.eventListType === 'progress_clock';
+      const subtype = isClock ? 'progress_clock' : undefined;
+      const defaultAttrs = createDefaultAttributes(entityType, subtype);
+      if (isClock && entityType === 'random_event_list') {
+        normalizedAttrs.eventListType = 'progress_clock';
+      }
       const mergedAttrs = {
         ...defaultAttrs,
         ...normalizedAttrs,
       };
 
+      if (entityType === 'area' && mergedAttrs.contents) {
+        if (typeof mergedAttrs.contents === 'string') {
+          mergedAttrs.contents = mergedAttrs.contents
+            .split(/\r?\n/)
+            .map((s: string) => s.trim().replace(/^[-*•]\s*/, ''))
+            .filter(Boolean);
+        } else if (Array.isArray(mergedAttrs.contents)) {
+          mergedAttrs.contents = mergedAttrs.contents
+            .map((s: any) => String(s).trim().replace(/^[-*•]\s*/, ''))
+            .filter(Boolean);
+        }
+      }
+
       return {
         name,
         entityType,
         columnSpan,
-        attributes: mergedAttrs,
+        attributes: sanitizeEntityAttributes(mergedAttrs),
       };
     });
 
@@ -534,8 +588,8 @@ export function getSampleGenerationResponse(
         columnSpan: 1,
         attributes: {
           trigger: 'Tripwire attached to rusted copper siphon release valve.',
-          detectionDc: 14,
-          disarmDc: 13,
+          detectionClue: 'Greenish corrosion flakes floating on the water near a taut wire.',
+          disarm: 'Clamp the valve stem with pliers or carefully tie off the tripwire.',
           effect: 'Pressurized jet of toxic swamp gas in a 15ft cone: DC 13 Con save or 2d8 poison damage and poisoned for 1 hour.',
           resetConditions: 'Manual reset by closing valve wheel in pipe alcove.',
         },
