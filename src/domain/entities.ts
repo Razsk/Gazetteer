@@ -51,14 +51,66 @@ export type EnemyAttributes = z.infer<typeof EnemyAttributesSchema>;
 // 3. Location Attributes
 export const LocationAttributesSchema = z.object({
   environmentType: z.string().default('Wilderness'),
-  sensoryDetails: z.object({
-    sight: z.string().default(''),
-    sound: z.string().default(''),
-    smell: z.string().default(''),
-  }).default({ sight: '', sound: '', smell: '' }),
-  pointsOfInterest: z.array(z.string()).default([]),
-  hazards: z.string().default(''),
-  connectedLocations: z.array(z.string()).default([]),
+  sensoryDetails: z
+    .union([
+      z.string(),
+      z.object({
+        sight: z.string().default(''),
+        sound: z.string().default(''),
+        smell: z.string().default(''),
+      }),
+    ])
+    .default({ sight: '', sound: '', smell: '' }),
+  pointsOfInterest: z
+    .union([z.array(z.string()), z.string()])
+    .transform((val) => {
+      if (Array.isArray(val)) {
+        return val.map((s) => String(s).trim().replace(/^[-*•]\s*/, '')).filter(Boolean);
+      }
+      if (typeof val === 'string') {
+        const raw = val.trim();
+        if (raw.includes('\n')) {
+          return raw.split(/\r?\n/).map((s) => s.trim().replace(/^[-*•]\s*/, '')).filter(Boolean);
+        }
+        if (raw.includes(';')) {
+          return raw.split(';').map((s) => s.trim().replace(/^[-*•]\s*/, '')).filter(Boolean);
+        }
+        return raw ? [raw] : [];
+      }
+      return [];
+    })
+    .default([]),
+  hazards: z
+    .union([z.string(), z.array(z.string())])
+    .transform((val) => {
+      if (Array.isArray(val)) {
+        return val.join('; ');
+      }
+      return val ?? '';
+    })
+    .default(''),
+  connectedLocations: z
+    .union([z.array(z.string()), z.string()])
+    .transform((val) => {
+      if (Array.isArray(val)) {
+        return val.map((s) => String(s).trim().replace(/^[-*•]\s*/, '')).filter(Boolean);
+      }
+      if (typeof val === 'string') {
+        const raw = val.trim();
+        if (raw.includes('\n')) {
+          return raw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+        }
+        if (raw.includes(',')) {
+          return raw.split(',').map((s) => s.trim()).filter(Boolean);
+        }
+        if (raw.includes(';')) {
+          return raw.split(';').map((s) => s.trim()).filter(Boolean);
+        }
+        return raw ? [raw] : [];
+      }
+      return [];
+    })
+    .default([]),
   customFields: CustomFieldsSchema,
 });
 export type LocationAttributes = z.infer<typeof LocationAttributesSchema>;

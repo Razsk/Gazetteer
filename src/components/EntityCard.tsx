@@ -263,7 +263,63 @@ export const EntityCard: React.FC<EntityCardProps> = ({
 
       case 'location':
       case 'adventure_site':
-      case 'area':
+      case 'area': {
+        const environmentType = attrs.environmentType || attrs.siteType;
+        const sensory = attrs.sensoryDetails || attrs.sensoryBox;
+
+        // Points of Interest
+        const rawPoi = attrs.pointsOfInterest;
+        let poiList: string[] = [];
+        if (Array.isArray(rawPoi)) {
+          poiList = rawPoi.map((item: any) => String(item).trim()).filter(Boolean);
+        } else if (typeof rawPoi === 'string' && rawPoi.trim()) {
+          const raw = rawPoi.trim();
+          if (raw.includes('\n')) {
+            poiList = raw.split(/\r?\n/).map((s: string) => s.trim().replace(/^[-*•]\s*/, '')).filter(Boolean);
+          } else if (raw.includes(';')) {
+            poiList = raw.split(';').map((s: string) => s.trim().replace(/^[-*•]\s*/, '')).filter(Boolean);
+          } else {
+            poiList = [raw];
+          }
+        }
+
+        // Contents (for area/adventure_site)
+        const rawContents = attrs.contents;
+        let contentsList: string[] = [];
+        if (Array.isArray(rawContents)) {
+          contentsList = rawContents.map((item: any) => String(item).trim()).filter(Boolean);
+        } else if (typeof rawContents === 'string' && rawContents.trim()) {
+          contentsList = rawContents
+            .split(/\r?\n/)
+            .map((line: string) => line.trim().replace(/^[-*•]\s*/, ''))
+            .filter(Boolean);
+        }
+
+        // Hazards
+        const rawHazards = attrs.hazards || attrs.environmentalHazards;
+        let hazardItems: string[] = [];
+        if (Array.isArray(rawHazards)) {
+          hazardItems = rawHazards.map((s: any) => String(s).trim()).filter(Boolean);
+        } else if (typeof rawHazards === 'string' && rawHazards.trim()) {
+          const raw = rawHazards.trim();
+          if (raw.includes('\n')) {
+            hazardItems = raw.split(/\r?\n/).map((s: string) => s.trim().replace(/^[-*•]\s*/, '')).filter(Boolean);
+          } else if (raw.includes(';')) {
+            hazardItems = raw.split(';').map((s: string) => s.trim().replace(/^[-*•]\s*/, '')).filter(Boolean);
+          } else {
+            hazardItems = [raw];
+          }
+        }
+
+        // Connections / Exits / Access
+        const rawConnections = attrs.connectedLocations || attrs.exitsConnections || attrs.entranceAccess || attrs.linkedAreas;
+        let connectionsText = '';
+        if (Array.isArray(rawConnections)) {
+          connectionsText = rawConnections.map((s: any) => String(s).trim()).filter(Boolean).join(', ');
+        } else if (typeof rawConnections === 'string') {
+          connectionsText = rawConnections.trim();
+        }
+
         return (
           <div className="space-y-1.5 text-xs">
             {attrs.mapKey && (
@@ -271,69 +327,84 @@ export const EntityCard: React.FC<EntityCardProps> = ({
                 {attrs.mapKey}
               </span>
             )}
-            {attrs.siteType && (
+            {environmentType && (
               <div className="font-semibold opacity-80 uppercase text-[10px] tracking-wider">
-                {attrs.siteType}
+                {environmentType}
               </div>
             )}
             {attrs.dimensionsLighting && <FormattedText content={attrs.dimensionsLighting} />}
-            {attrs.sensoryBox && (
-              <blockquote className="border-l-2 border-current/30 pl-2 italic opacity-85 my-1">
-                <FormattedText content={attrs.sensoryBox} />
-              </blockquote>
+
+            {/* Sensory Details / Sensory Box */}
+            {sensory && (
+              typeof sensory === 'object' && sensory !== null ? (
+                <blockquote className="border-l-2 border-current/30 pl-2 italic opacity-85 my-1 space-y-0.5">
+                  {(sensory as any).sight && (
+                    <div><span className="font-semibold not-italic">Sight:</span> <FormattedText content={(sensory as any).sight} /></div>
+                  )}
+                  {(sensory as any).sound && (
+                    <div><span className="font-semibold not-italic">Sound:</span> <FormattedText content={(sensory as any).sound} /></div>
+                  )}
+                  {(sensory as any).smell && (
+                    <div><span className="font-semibold not-italic">Smell:</span> <FormattedText content={(sensory as any).smell} /></div>
+                  )}
+                </blockquote>
+              ) : (
+                <blockquote className="border-l-2 border-current/30 pl-2 italic opacity-85 my-1">
+                  <FormattedText content={sensory} />
+                </blockquote>
+              )
             )}
-            {(() => {
-              const rawContents = attrs.contents;
-              if (!rawContents) return null;
 
-              let items: string[] = [];
-              if (Array.isArray(rawContents)) {
-                items = rawContents.map((item) => String(item).trim()).filter(Boolean);
-              } else if (typeof rawContents === 'string') {
-                items = rawContents
-                  .split(/\r?\n/)
-                  .map((line) => line.trim().replace(/^[-*•]\s*/, ''))
-                  .filter(Boolean);
-              }
-
-              if (items.length === 0) return null;
-
-              if (items.length === 1) {
-                return (
-                  <div>
-                    <span className="font-semibold opacity-75">Contents:</span>{' '}
-                    <FormattedText content={items[0]} />
-                  </div>
-                );
-              }
-
-              return (
-                <div>
-                  <span className="font-semibold opacity-75 block mb-0.5">Contents:</span>
-                  <FormattedText content={items} listStyle="bullet" />
-                </div>
-              );
-            })()}
-            {attrs.entranceAccess && (
+            {/* Points of Interest */}
+            {poiList.length > 0 && (
               <div>
-                <span className="font-semibold opacity-75">Access:</span>{' '}
-                <FormattedText content={attrs.entranceAccess} />
+                <span className="font-semibold opacity-75 block mb-0.5">Points of Interest:</span>
+                {poiList.length === 1 ? (
+                  <FormattedText content={poiList[0]} />
+                ) : (
+                  <FormattedText content={poiList} listStyle="bullet" />
+                )}
               </div>
             )}
-            {attrs.environmentalHazards && (
+
+            {/* Contents (if present and distinct from points of interest) */}
+            {contentsList.length > 0 && (
+              <div>
+                <span className="font-semibold opacity-75 block mb-0.5">Contents:</span>
+                {contentsList.length === 1 ? (
+                  <FormattedText content={contentsList[0]} />
+                ) : (
+                  <FormattedText content={contentsList} listStyle="bullet" />
+                )}
+              </div>
+            )}
+
+            {/* Hazards */}
+            {hazardItems.length > 0 && (
               <div className="text-red-600 dark:text-red-400">
-                <span className="font-semibold">Hazard:</span>{' '}
-                <FormattedText content={attrs.environmentalHazards} />
+                <span className="font-semibold block mb-0.5">
+                  {hazardItems.length === 1 ? 'Hazard:' : 'Hazards:'}
+                </span>
+                {hazardItems.length === 1 ? (
+                  <FormattedText content={hazardItems[0]} />
+                ) : (
+                  <FormattedText content={hazardItems} listStyle="bullet" />
+                )}
               </div>
             )}
-            {attrs.exitsConnections && (
+
+            {/* Connected Locations / Exits / Access */}
+            {connectionsText && (
               <div>
-                <span className="font-semibold opacity-75">Exits:</span>{' '}
-                <FormattedText content={attrs.exitsConnections} />
+                <span className="font-semibold opacity-75">
+                  {attrs.connectedLocations ? 'Connected Locations:' : attrs.exitsConnections ? 'Exits:' : attrs.entranceAccess ? 'Access:' : 'Connections:'}
+                </span>{' '}
+                <FormattedText content={connectionsText} />
               </div>
             )}
           </div>
         );
+      }
 
       case 'region':
         return (

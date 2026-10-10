@@ -390,9 +390,152 @@ export const EditEntityModal: React.FC<EditEntityModalProps> = ({
           </div>
         );
 
+      case 'location': {
+        const rawSensory = typeof attributes.sensoryDetails === 'string'
+          ? attributes.sensoryDetails
+          : (typeof attributes.sensoryDetails === 'object' && attributes.sensoryDetails !== null
+              ? [
+                  attributes.sensoryDetails.sight ? `Sight: ${attributes.sensoryDetails.sight}` : '',
+                  attributes.sensoryDetails.sound ? `Sound: ${attributes.sensoryDetails.sound}` : '',
+                  attributes.sensoryDetails.smell ? `Smell: ${attributes.sensoryDetails.smell}` : '',
+                ].filter(Boolean).join('\n')
+              : (attributes.sensoryBox || ''));
+
+        const rawPoi = attributes.pointsOfInterest;
+        const poiList: string[] = Array.isArray(rawPoi)
+          ? rawPoi
+          : (typeof rawPoi === 'string' && rawPoi.trim()
+              ? (rawPoi.includes('\n')
+                  ? rawPoi.split(/\r?\n/).map((s: string) => s.trim().replace(/^[-*•]\s*/, '')).filter(Boolean)
+                  : rawPoi.includes(';')
+                  ? rawPoi.split(';').map((s: string) => s.trim().replace(/^[-*•]\s*/, '')).filter(Boolean)
+                  : [rawPoi.trim()])
+              : []);
+
+        const rawConn = attributes.connectedLocations;
+        const connStr = Array.isArray(rawConn)
+          ? rawConn.join(', ')
+          : (typeof rawConn === 'string' ? rawConn : (attributes.exitsConnections || ''));
+
+        return (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-neutral-400 mb-1">
+                Environment Type
+              </label>
+              <input
+                type="text"
+                value={attributes.environmentType || attributes.siteType || ''}
+                onChange={(e) => handleAttrChange('environmentType', e.target.value)}
+                placeholder="e.g. Ruined Chapel Wedged in a Chasm, Flooded Cavern, Mountain Pass"
+                className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-neutral-400 mb-1">
+                Sensory Details (Sight, Sound, Smell)
+              </label>
+              <textarea
+                rows={3}
+                value={rawSensory}
+                onChange={(e) => handleAttrChange('sensoryDetails', e.target.value)}
+                placeholder="Sight: ... Sound: ... Smell: ..."
+                className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500 italic"
+              />
+            </div>
+
+            {/* Points of Interest list */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-400">
+                    Points of Interest ({poiList.length})
+                  </label>
+                  <p className="text-[11px] text-neutral-500">
+                    Key landmarks, relics, ledges, or features within this location.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleAttrChange('pointsOfInterest', [...poiList, '']);
+                  }}
+                  className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-medium flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" /> Add Point
+                </button>
+              </div>
+
+              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                {poiList.map((item: string, idx: number) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <span className="w-5 text-center text-xs font-mono font-bold text-neutral-500 shrink-0">
+                      •
+                    </span>
+                    <input
+                      type="text"
+                      value={item}
+                      onChange={(e) => {
+                        const copy = [...poiList];
+                        copy[idx] = e.target.value;
+                        handleAttrChange('pointsOfInterest', copy);
+                      }}
+                      placeholder={`Point of interest #${idx + 1}...`}
+                      className="flex-1 px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const copy = poiList.filter((_, i) => i !== idx);
+                        handleAttrChange('pointsOfInterest', copy);
+                      }}
+                      className="text-neutral-500 hover:text-red-400 p-1 cursor-pointer"
+                      title="Delete point"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {poiList.length === 0 && (
+                  <div className="p-3 border border-dashed border-neutral-800 rounded text-center text-xs text-neutral-500">
+                    No points of interest listed yet. Click &ldquo;Add Point&rdquo; to add features or landmarks.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-neutral-400 mb-1">
+                Hazards & Complications
+              </label>
+              <textarea
+                rows={2}
+                value={attributes.hazards || attributes.environmentalHazards || ''}
+                onChange={(e) => handleAttrChange('hazards', e.target.value)}
+                placeholder="e.g. Sucking updrafts, crumbling masonry, toxic water spray..."
+                className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-neutral-400 mb-1">
+                Connected Locations
+              </label>
+              <input
+                type="text"
+                value={connStr}
+                onChange={(e) => handleAttrChange('connectedLocations', e.target.value)}
+                placeholder="e.g. The Leviathan Rib-Walks, Surface Sinkhole Rim"
+                className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+          </div>
+        );
+      }
+
       case 'adventure_site':
       case 'area':
-      case 'location':
         return (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">

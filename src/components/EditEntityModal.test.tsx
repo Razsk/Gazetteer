@@ -224,4 +224,71 @@ describe('EditEntityModal Trap Fields', () => {
     ]);
     expect(updated.attributes.sensoryBox).toContain('Visible within: Shattered sarcophagus with exposed bones, Rusted bronze candelabra.');
   });
+
+  it('renders location entity form with Environment Type, Sensory Details, Points of Interest, Hazards, and Connected Locations', () => {
+    const store = useScenarioStore.getState();
+    const locEntity: Entity = {
+      id: 'loc-edit-1',
+      scenarioId: store.currentScenario?.id || 'scen-1',
+      entityType: 'location',
+      name: 'The Shattered Nave',
+      attributes: {
+        environmentType: 'Inverted Ruined Chapel',
+        sensoryDetails: 'Sight: Limestone chapel. Sound: Roar of cataracts. Smell: River silt.',
+        pointsOfInterest: ['The Inverted Belfry: Refuge ledge with Sister Alena'],
+        hazards: 'Structural Instability',
+        connectedLocations: 'Surface Sinkhole Rim',
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    useScenarioStore.setState({
+      entities: {
+        ...store.entities,
+        [locEntity.id]: locEntity,
+      },
+    });
+
+    render(
+      <EditEntityModal
+        entityId={locEntity.id}
+        isOpen={true}
+        onClose={() => {}}
+      />
+    );
+
+    // Verify fields
+    expect(screen.getByDisplayValue('Inverted Ruined Chapel')).toBeInTheDocument();
+    expect(screen.getByDisplayValue(/Sight: Limestone chapel/)).toBeInTheDocument();
+    expect(screen.getByDisplayValue(/The Inverted Belfry/)).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Structural Instability')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Surface Sinkhole Rim')).toBeInTheDocument();
+
+    // Add a Point of Interest
+    const addPoiBtn = screen.getByRole('button', { name: /add point/i });
+    fireEvent.click(addPoiBtn);
+    const poiInputs = screen.getAllByPlaceholderText(/point of interest #/i);
+    expect(poiInputs.length).toBe(2);
+    fireEvent.change(poiInputs[1], {
+      target: { value: 'The Gilded Chantry Reliquary' },
+    });
+
+    // Update Connected Locations
+    const connInput = screen.getByPlaceholderText(/the leviathan rib-walks/i);
+    fireEvent.change(connInput, {
+      target: { value: 'Surface Sinkhole Rim, The Leviathan Rib-Walks' },
+    });
+
+    // Save
+    const saveButton = screen.getByRole('button', { name: /save changes/i });
+    fireEvent.click(saveButton);
+
+    const updated = useScenarioStore.getState().entities[locEntity.id];
+    expect(updated.attributes.pointsOfInterest).toEqual([
+      'The Inverted Belfry: Refuge ledge with Sister Alena',
+      'The Gilded Chantry Reliquary',
+    ]);
+    expect(updated.attributes.connectedLocations).toBe('Surface Sinkhole Rim, The Leviathan Rib-Walks');
+  });
 });

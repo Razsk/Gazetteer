@@ -23,6 +23,7 @@ const ENTITY_CATEGORIES: {
     types: [
       { type: 'region', label: 'Region' },
       { type: 'adventure_site', label: 'Adventure Site' },
+      { type: 'location', label: 'Location' },
       { type: 'area', label: 'Area / Room' },
     ],
   },

@@ -5,6 +5,7 @@ import {
   NpcAttributesSchema,
   TrapAttributesSchema,
   AreaAttributesSchema,
+  LocationAttributesSchema,
 } from './entities';
 
 describe('Entity Domain Schema (Seam 1)', () => {
@@ -109,5 +110,56 @@ describe('Entity Domain Schema (Seam 1)', () => {
     // 4. Default empty contents
     const areaDefault = AreaAttributesSchema.parse({});
     expect(areaDefault.contents).toEqual([]);
+  });
+
+  it('validates and normalizes Location entity attributes with string and array/object formats', () => {
+    // 1. Strings with semicolons/commas (like AI clipboard responses)
+    const locFromString = LocationAttributesSchema.parse({
+      environmentType: 'Inverted Ruined Chapel Wedged in a Chasm',
+      sensoryDetails: 'Sight: Inverted chapel. Sound: Roar of cataracts. Smell: River silt.',
+      pointsOfInterest: 'The Inverted Belfry: Refuge ledge; Precarious Bone-Span: 40-foot sway bridge',
+      hazards: 'Structural Instability: Severe impacts; Slick Inverted Masonry: +1t to Agility',
+      connectedLocations: 'Surface Sinkhole Rim, The Leviathan Rib-Walks',
+    });
+
+    expect(locFromString.environmentType).toBe('Inverted Ruined Chapel Wedged in a Chasm');
+    expect(locFromString.sensoryDetails).toBe('Sight: Inverted chapel. Sound: Roar of cataracts. Smell: River silt.');
+    expect(locFromString.pointsOfInterest).toEqual([
+      'The Inverted Belfry: Refuge ledge',
+      'Precarious Bone-Span: 40-foot sway bridge',
+    ]);
+    expect(locFromString.hazards).toBe('Structural Instability: Severe impacts; Slick Inverted Masonry: +1t to Agility');
+    expect(locFromString.connectedLocations).toEqual([
+      'Surface Sinkhole Rim',
+      'The Leviathan Rib-Walks',
+    ]);
+
+    // 2. Structured object & array format
+    const locFromStructured = LocationAttributesSchema.parse({
+      environmentType: 'Wilderness',
+      sensoryDetails: {
+        sight: 'Dim light filtering through mist',
+        sound: 'Crickets chirping',
+        smell: 'Damp pine needles',
+      },
+      pointsOfInterest: ['Ancient stone altar', 'Hidden cave behind waterfall'],
+      hazards: ['Unstable footing', 'Poisonous nettles'],
+      connectedLocations: ['Forest Clearing', 'Old Watchtower'],
+    });
+
+    expect(locFromStructured.sensoryDetails).toEqual({
+      sight: 'Dim light filtering through mist',
+      sound: 'Crickets chirping',
+      smell: 'Damp pine needles',
+    });
+    expect(locFromStructured.pointsOfInterest).toEqual([
+      'Ancient stone altar',
+      'Hidden cave behind waterfall',
+    ]);
+    expect(locFromStructured.hazards).toBe('Unstable footing; Poisonous nettles');
+    expect(locFromStructured.connectedLocations).toEqual([
+      'Forest Clearing',
+      'Old Watchtower',
+    ]);
   });
 });

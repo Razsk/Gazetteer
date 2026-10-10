@@ -597,6 +597,133 @@ describe('EntityCard Area/Room contents rendering', () => {
     const listItems = container.querySelectorAll('li');
     expect(listItems.length).toBe(3);
   });
+  it('renders location entity with all fields: environmentType, sensoryDetails, pointsOfInterest, hazards, and connectedLocations', () => {
+    const locationEntity: Entity = {
+      id: 'd1dcb1c0-cc51-40c8-bb6b-ffdc576ec44d',
+      scenarioId: 'scen-1',
+      entityType: 'location',
+      name: 'The Shattered Nave',
+      attributes: {
+        environmentType: 'Inverted Ruined Chapel Wedged in a Chasm',
+        sensoryDetails:
+          'Sight: An upside-down limestone surface chapel wedged precariously between two massive, calcified leviathan ribs. Sound: The deafening roar of plunging cataracts echoing off hollow fossil bone. Smell: Cold river silt, pulverized wet plaster, mountain mud, and the metallic tang of ionized ozone.',
+        pointsOfInterest:
+          'The Inverted Belfry: Turned into a strained refuge ledge where three concussed miners and Sister Alena cling to counterweight ropes; The Gilded Chantry Reliquary: Iron-strapped and pinned beneath an inverted oak joist, housing the consecrated Salve of Saint Elowen; Precarious Bone-Span: A 40-foot sway bridge lashed from rotten hemp ropes and split cedar pews bridging the chasm to the nearest leviathan rib.',
+        hazards:
+          'Structural Instability: Severe impacts, explosive magic, or botched maneuvers roll against the [6d] Shaft Collapse timer; Slick Inverted Masonry: +1t to Agility rolls without pitons or climbing harness; Chasm Drop: A failure with a Cut on the outer ledges triggers an immediate Agility defense roll to avoid falling into the lower cataract basin.',
+        connectedLocations: 'Surface Sinkhole Rim, The Leviathan Rib-Walks',
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const { container } = render(
+      <EntityCard
+        placement={mockPlacement}
+        entity={locationEntity}
+        pageSkin="parchment"
+      />
+    );
+
+    // Header name
+    expect(screen.getByText('The Shattered Nave')).toBeInTheDocument();
+
+    // Environment Type
+    expect(screen.getByText('Inverted Ruined Chapel Wedged in a Chasm')).toBeInTheDocument();
+
+    // Sensory details in blockquote
+    expect(
+      screen.getByText(/An upside-down limestone surface chapel wedged precariously/)
+    ).toBeInTheDocument();
+
+    // Points of Interest
+    expect(screen.getByText('Points of Interest:')).toBeInTheDocument();
+    expect(
+      screen.getByText(/The Inverted Belfry: Turned into a strained refuge ledge/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/The Gilded Chantry Reliquary: Iron-strapped and pinned/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Precarious Bone-Span: A 40-foot sway bridge/)
+    ).toBeInTheDocument();
+
+    // Hazards
+    expect(screen.getByText('Hazards:')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Structural Instability: Severe impacts, explosive magic/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Slick Inverted Masonry: \+1t to Agility rolls/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Chasm Drop: A failure with a Cut on the outer ledges/)
+    ).toBeInTheDocument();
+
+    // Connected locations
+    expect(screen.getByText('Connected Locations:')).toBeInTheDocument();
+    expect(
+      screen.getByText('Surface Sinkhole Rim, The Leviathan Rib-Walks')
+    ).toBeInTheDocument();
+
+    // 3 POI list items + 3 Hazard list items = 6 bullet items
+    const listItems = container.querySelectorAll('li');
+    expect(listItems.length).toBe(6);
+  });
+
+  it('renders location entity with object sensoryDetails and array pointsOfInterest/hazards/connectedLocations', () => {
+    const locationEntity: Entity = {
+      id: 'loc-structured-1',
+      scenarioId: 'scen-1',
+      entityType: 'location',
+      name: 'The Leviathan Rib-Walks',
+      attributes: {
+        environmentType: 'Vertical Bone Scaffolding',
+        sensoryDetails: {
+          sight: 'Massive fossilized ribs arch outward from sheer basalt walls.',
+          sound: 'Screaming subterranean gales surging up from the abyssal vents.',
+          smell: 'Chalky fossil dust, damp cold rot, and stagnant air.',
+        },
+        pointsOfInterest: [
+          'Cultist Waystations: Shallow recesses hand-chiseled into the rib arches.',
+          'Snapped Anchor Point: A fractured climbing spar where a piton tore free.',
+        ],
+        hazards: [
+          'Sucking Updrafts: Sudden air pressure shifts force a Brawn defense roll.',
+        ],
+        connectedLocations: ['The Shattered Nave', 'The Cataract Churn'],
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const { container } = render(
+      <EntityCard
+        placement={mockPlacement}
+        entity={locationEntity}
+        pageSkin="parchment"
+      />
+    );
+
+    expect(screen.getByText('The Leviathan Rib-Walks')).toBeInTheDocument();
+    expect(screen.getByText('Vertical Bone Scaffolding')).toBeInTheDocument();
+    expect(screen.getByText('Sight:')).toBeInTheDocument();
+    expect(screen.getByText('Massive fossilized ribs arch outward from sheer basalt walls.')).toBeInTheDocument();
+    expect(screen.getByText('Sound:')).toBeInTheDocument();
+    expect(screen.getByText('Screaming subterranean gales surging up from the abyssal vents.')).toBeInTheDocument();
+    expect(screen.getByText('Smell:')).toBeInTheDocument();
+    expect(screen.getByText('Chalky fossil dust, damp cold rot, and stagnant air.')).toBeInTheDocument();
+
+    expect(screen.getByText('Points of Interest:')).toBeInTheDocument();
+    expect(screen.getByText('Cultist Waystations: Shallow recesses hand-chiseled into the rib arches.')).toBeInTheDocument();
+    expect(screen.getByText('Snapped Anchor Point: A fractured climbing spar where a piton tore free.')).toBeInTheDocument();
+
+    expect(screen.getByText('Hazard:')).toBeInTheDocument();
+    expect(screen.getByText('Sucking Updrafts: Sudden air pressure shifts force a Brawn defense roll.')).toBeInTheDocument();
+
+    expect(screen.getByText('Connected Locations:')).toBeInTheDocument();
+    expect(screen.getByText('The Shattered Nave, The Cataract Churn')).toBeInTheDocument();
+  });
 });
 
 
