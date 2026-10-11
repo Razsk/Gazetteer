@@ -68,20 +68,22 @@ export const SortableEntityCard: React.FC<SortableEntityCardProps> = ({
       onHeightChange(h);
     }
 
-    const observer = new ResizeObserver((entries) => {
-      if (isDragging) return;
-      for (const entry of entries) {
-        if (entry.target === el) {
-          const height = entry.contentRect.height;
-          if (height > 0) {
-            onHeightChange(height);
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver((entries) => {
+        if (isDragging) return;
+        for (const entry of entries) {
+          if (entry.target === el) {
+            const height = entry.contentRect.height;
+            if (height > 0) {
+              onHeightChange(height);
+            }
           }
         }
-      }
-    });
+      });
 
-    observer.observe(el);
-    return () => observer.disconnect();
+      observer.observe(el);
+      return () => observer.disconnect();
+    }
   }, [onHeightChange, isDragging]);
 
   const style: React.CSSProperties = {

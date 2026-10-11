@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Entity } from '@/domain/entities';
 import { useScenarioStore } from '@/store/scenarioStore';
 import { getEntityIcon } from './themeSkin';
@@ -18,8 +18,16 @@ import {
   Dice5,
   Clock,
   Sparkles,
+  Upload,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { ProgressClock } from './ProgressClock';
+import {
+  formatFileSize,
+  calculateAspectRatio,
+  processImageFile,
+  loadImageDimensions,
+} from '@/domain/imageUtils';
 
 interface EditEntityModalProps {
   entityId: string | null;
@@ -40,6 +48,8 @@ export const EditEntityModal: React.FC<EditEntityModalProps> = ({
   const [attributes, setAttributes] = useState<Record<string, any>>({});
   const [jsonString, setJsonString] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
+  const [imageDragOver, setImageDragOver] = useState(false);
+  const modalFileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync state whenever entity changes or modal opens
   useEffect(() => {
@@ -49,6 +59,27 @@ export const EditEntityModal: React.FC<EditEntityModalProps> = ({
       setAttributes(attrs);
       setJsonString(JSON.stringify(attrs, null, 2));
       setJsonError(null);
+
+      // If this is an image entity with an assetUrl but missing width/height, measure it
+      if (entity.entityType === 'image' && attrs.assetUrl && (!attrs.width || !attrs.height)) {
+        loadImageDimensions(attrs.assetUrl)
+          .then((dims) => {
+            if (dims.width > 0 && dims.height > 0) {
+              const ratio = calculateAspectRatio(dims.width, dims.height);
+              setAttributes((prev) => {
+                const next = {
+                  ...prev,
+                  width: dims.width,
+                  height: dims.height,
+                  aspectRatio: ratio.ratioString !== '—' ? ratio.ratioString : prev.aspectRatio || '1:1',
+                };
+                setJsonString(JSON.stringify(next, null, 2));
+                return next;
+              });
+            }
+          })
+          .catch(() => {});
+      }
     }
   }, [entityId, isOpen, entity]);
 
@@ -1191,19 +1222,213 @@ export const EditEntityModal: React.FC<EditEntityModalProps> = ({
         );
       }
 
-      case 'image':
+      case 'image': {
+        const hasImage = Boolean(attributes.assetUrl);
+        const ratioInfo = calculateAspectRatio(attributes.width, attributes.height);
+        const displayRatio =
+          attributes.aspectRatio && attributes.aspectRatio !== '—'
+            ? attributes.aspectRatio
+            : ratioInfo.ratioString;
+        const displayDimensions =
+          attributes.width && attributes.height
+            ? `${attributes.width} × ${attributes.height} px`
+            : null;
+        const displayFileSize = attributes.fileSize
+          ? formatFileSize(attributes.fileSize)
+          : attributes.assetUrl?.startsWith('data:')
+          ? formatFileSize(Math.round((attributes.assetUrl.length * 3) / 4))
+          : null;
+
         return (
           <div className="space-y-4">
+            {/* Image Details Card (Size & Ratio) */}
+            <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-3 space-y-2.5">
+              <div className="flex items-center justify-between text-xs font-semibold text-neutral-400">
+                <span>Image Metrics & Preview</span>
+                {hasImage && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleAttrsChange({
+                        assetUrl: null,
+                        width: undefined,
+                        height: undefined,
+                        fileSize: undefined,
+                        fileName: undefined,
+                        aspectRatio: '1:1',
+                      });
+                    }}
+                    className="text-[11px] text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+                  >
+                    Remove Image
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="w-20 h-20 rounded bg-neutral-950 border border-neutral-700/80 overflow-hidden flex items-center justify-center shrink-0">
+                  {hasImage ? (
+                    <img
+                      src={attributes.assetUrl}
+                      alt={attributes.caption || 'Preview'}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <ImageIcon className="w-8 h-8 text-neutral-600" />
+                  )}
+                </div>
+
+                <div className="flex-1 grid grid-cols-2 gap-2 min-w-0">
+                  {/* Size Card */}
+                  <div className="p-2 rounded bg-neutral-950 border border-neutral-800">
+                    <span className="block text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
+                      Size
+                    </span>
+                    <span
+                      data-testid="image-size-display"
+                      className="block text-xs font-mono font-medium text-neutral-100 truncate mt-0.5"
+                    >
+                      {displayDimensions || (hasImage ? 'Detected' : '—')}
+                    </span>
+                    {displayFileSize && (
+                      <span className="block text-[10px] text-neutral-400 font-mono mt-0.5 truncate">
+                        {displayFileSize}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Ratio Card */}
+                  <div className="p-2 rounded bg-neutral-950 border border-neutral-800">
+                    <span className="block text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
+                      Ratio
+                    </span>
+                    <span
+                      data-testid="image-ratio-display"
+                      className="block text-xs font-mono font-medium text-neutral-100 truncate mt-0.5"
+                    >
+                      {displayRatio || '—'}
+                    </span>
+                    {ratioInfo.label && (
+                      <span className="block text-[10px] text-neutral-400 mt-0.5 truncate">
+                        {ratioInfo.label}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Drag & Drop Upload Zone */}
+            <div>
+              <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
+                Upload or Replace Image
+              </label>
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setImageDragOver(true);
+                }}
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setImageDragOver(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setImageDragOver(false);
+                }}
+                onDrop={async (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setImageDragOver(false);
+                  const file = e.dataTransfer.files?.[0];
+                  if (file && file.type.startsWith('image/')) {
+                    const processed = await processImageFile(file);
+                    handleAttrsChange({
+                      assetUrl: processed.assetUrl,
+                      fileName: processed.fileName,
+                      fileSize: processed.fileSize,
+                      width: processed.width,
+                      height: processed.height,
+                      aspectRatio: processed.aspectRatio,
+                    });
+                    if (!name || name === 'New Image') {
+                      setName(processed.fileName.replace(/\.[^/.]+$/, ''));
+                    }
+                  }
+                }}
+                onClick={() => modalFileInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-lg p-4 flex flex-col items-center justify-center text-center transition-all cursor-pointer ${
+                  imageDragOver
+                    ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400'
+                    : 'border-neutral-700 hover:border-neutral-500 bg-neutral-950/50 hover:bg-neutral-900 text-neutral-400'
+                }`}
+              >
+                <input
+                  ref={modalFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const processed = await processImageFile(file);
+                      handleAttrsChange({
+                        assetUrl: processed.assetUrl,
+                        fileName: processed.fileName,
+                        fileSize: processed.fileSize,
+                        width: processed.width,
+                        height: processed.height,
+                        aspectRatio: processed.aspectRatio,
+                      });
+                      if (!name || name === 'New Image') {
+                        setName(processed.fileName.replace(/\.[^/.]+$/, ''));
+                      }
+                    }
+                  }}
+                />
+                <Upload className="w-5 h-5 mb-1 opacity-80" />
+                <span className="text-xs font-medium text-neutral-200">
+                  {imageDragOver ? 'Drop image here' : 'Drag & drop image here, or browse to upload'}
+                </span>
+                <span className="text-[10px] text-neutral-500 mt-0.5">
+                  Click to select file from your device
+                </span>
+              </div>
+            </div>
+
             <div>
               <label className="block text-xs font-semibold text-neutral-400 mb-1">Image Asset URL</label>
               <input
                 type="text"
                 value={attributes.assetUrl || ''}
-                onChange={(e) => handleAttrChange('assetUrl', e.target.value)}
-                placeholder="https://... (or leave empty for placeholder)"
+                onChange={async (e) => {
+                  const url = e.target.value;
+                  handleAttrChange('assetUrl', url);
+                  if (url.trim()) {
+                    try {
+                      const dims = await loadImageDimensions(url.trim());
+                      if (dims.width > 0 && dims.height > 0) {
+                        const ratio = calculateAspectRatio(dims.width, dims.height);
+                        handleAttrsChange({
+                          assetUrl: url,
+                          width: dims.width,
+                          height: dims.height,
+                          aspectRatio: ratio.ratioString,
+                        });
+                      }
+                    } catch {
+                      // External URL might fail CORS, keep url
+                    }
+                  }
+                }}
+                placeholder="https://... (or paste data:image/...)"
                 className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500"
               />
             </div>
+
             <div>
               <label className="block text-xs font-semibold text-neutral-400 mb-1">Caption / Subtitle</label>
               <input
@@ -1214,6 +1439,7 @@ export const EditEntityModal: React.FC<EditEntityModalProps> = ({
                 className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-100 focus:outline-none focus:border-indigo-500"
               />
             </div>
+
             <div>
               <label className="block text-xs font-semibold text-neutral-400 mb-1">Generation Prompt</label>
               <textarea
@@ -1226,6 +1452,7 @@ export const EditEntityModal: React.FC<EditEntityModalProps> = ({
             </div>
           </div>
         );
+      }
 
       case 'generic_list': {
         const items = Array.isArray(attributes.items) ? attributes.items : [];

@@ -238,7 +238,7 @@ export type RumorListAttributes = z.infer<typeof RumorListAttributesSchema>;
 export const ImageAttributesSchema = z.object({
   prompt: z.string().default(''),
   negativePrompt: z.string().optional(),
-  aspectRatio: z.enum(['1:1', '16:9', '9:16', '4:3', '3:2', '21:9']).default('1:1'),
+  aspectRatio: z.string().default('1:1'),
   stylePreset: z.enum(['oil_painting', 'parchment_sketch', 'isometric_map', 'dark_fantasy', 'watercolor']).default('parchment_sketch'),
   assetUrl: z.string().nullable().default(null),
   thumbnailUrl: z.string().nullable().default(null),
@@ -246,6 +246,10 @@ export const ImageAttributesSchema = z.object({
   caption: z.string().optional(),
   frameStyle: z.enum(['borderless', 'ornate_parchment', 'vignette', 'clean_cut']).default('ornate_parchment'),
   fitMode: z.enum(['cover', 'contain']).default('cover'),
+  width: z.number().optional(),
+  height: z.number().optional(),
+  fileSize: z.number().optional(),
+  fileName: z.string().optional(),
   customFields: CustomFieldsSchema,
 });
 export type ImageAttributes = z.infer<typeof ImageAttributesSchema>;

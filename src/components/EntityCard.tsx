@@ -24,10 +24,12 @@ import {
   ArrowDown,
   List,
   ListOrdered,
+  Upload,
 } from 'lucide-react';
 import { EditEntityModal } from './EditEntityModal';
 import { FormattedText } from './FormattedText';
 import { ProgressClock } from './ProgressClock';
+import { processImageFile } from '@/domain/imageUtils';
 
 interface EntityCardProps {
   placement: Placement;
@@ -70,6 +72,8 @@ export const EntityCard: React.FC<EntityCardProps> = ({
   const [isExpanded, setIsExpanded] = useState(!placement.styleOverrides.isCollapsed);
   const [isMoveMenuOpen, setIsMoveMenuOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isImageDragOver, setIsImageDragOver] = useState(false);
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
 
   const isSelected = store.selectedEntityIds.includes(entity.id);
   const skin = THEME_SKINS[placement.styleOverrides.themeSkin || pageSkin];
@@ -697,22 +701,152 @@ export const EntityCard: React.FC<EntityCardProps> = ({
       }
 
       // Image Module Layout
-      case 'image':
+      case 'image': {
+        const handleImageFile = async (file: File) => {
+          try {
+            const processed = await processImageFile(file);
+            store.updateEntity(entity.id, {
+              attributes: {
+                ...attrs,
+                assetUrl: processed.assetUrl,
+                fileName: processed.fileName,
+                fileSize: processed.fileSize,
+                width: processed.width,
+                height: processed.height,
+                aspectRatio: processed.aspectRatio,
+              },
+            });
+          } catch (err) {
+            console.error('Failed to process image file:', err);
+          }
+        };
+
+        const handleDragOver = (e: React.DragEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsImageDragOver(true);
+        };
+
+        const handleDragEnter = (e: React.DragEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsImageDragOver(true);
+        };
+
+        const handleDragLeave = (e: React.DragEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsImageDragOver(false);
+        };
+
+        const handleDrop = async (e: React.DragEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsImageDragOver(false);
+          const file = e.dataTransfer.files?.[0];
+          if (file && file.type.startsWith('image/')) {
+            await handleImageFile(file);
+          }
+        };
+
         return (
           <div className="space-y-2 text-xs">
             {attrs.assetUrl ? (
-              <div className="overflow-hidden rounded border border-current/20">
+              <div
+                onDragOver={handleDragOver}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className="relative group/img overflow-hidden rounded border border-current/20"
+              >
+                <input
+                  ref={imageFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleImageFile(file);
+                  }}
+                />
                 <img
                   src={attrs.assetUrl}
                   alt={attrs.caption || entity.name}
-                  className="w-full object-cover max-h-48"
+                  className="w-full object-cover max-h-56"
                 />
+
+                {/* Drag over overlay */}
+                {isImageDragOver && (
+                  <div className="absolute inset-0 bg-indigo-950/85 backdrop-blur-xs flex flex-col items-center justify-center text-white border-2 border-dashed border-indigo-400 z-20 p-4 text-center">
+                    <Upload className="w-7 h-7 mb-1.5 animate-bounce" />
+                    <span className="font-semibold text-xs">Drop to replace image</span>
+                  </div>
+                )}
+
+                {/* Upload action button on hover */}
+                {!isImageDragOver && (
+                  <div className="absolute top-2 right-2 flex items-center gap-1.5 opacity-0 group-hover/img:opacity-100 transition-opacity no-print">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        imageFileInputRef.current?.click();
+                      }}
+                      className="px-2.5 py-1 rounded bg-black/80 hover:bg-black text-white text-[11px] font-medium flex items-center gap-1.5 backdrop-blur-xs shadow cursor-pointer transition-colors"
+                      title="Upload a new image to replace this one"
+                    >
+                      <Upload className="w-3 h-3" />
+                      <span>Upload New</span>
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
-              <div className="border-2 border-dashed border-current/20 rounded p-6 flex flex-col items-center justify-center opacity-60 text-center">
-                <ImageIcon className="w-8 h-8 mb-1" />
-                <span className="font-semibold">Image Asset Placeholder</span>
-                <span className="text-[10px]">{attrs.aspectRatio || '1:1'} • {attrs.stylePreset || 'Sketch'}</span>
+              <div
+                onDragOver={handleDragOver}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  imageFileInputRef.current?.click();
+                }}
+                className={`border-2 border-dashed rounded-lg p-5 flex flex-col items-center justify-center text-center transition-all cursor-pointer ${
+                  isImageDragOver
+                    ? 'border-indigo-500 bg-indigo-500/15 text-indigo-500 scale-[1.01]'
+                    : 'border-current/25 hover:border-current/50 hover:bg-black/5 dark:hover:bg-white/5 opacity-80 hover:opacity-100'
+                }`}
+              >
+                <input
+                  ref={imageFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleImageFile(file);
+                  }}
+                />
+                <div className="p-2.5 rounded-full bg-black/5 dark:bg-white/5 mb-2">
+                  <Upload className="w-5 h-5 opacity-80" />
+                </div>
+                <span className="font-semibold text-xs">
+                  {isImageDragOver ? 'Drop image here' : 'Drag & drop image here'}
+                </span>
+                <span className="text-[10px] opacity-70 mt-0.5">
+                  or click to upload from device
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    imageFileInputRef.current?.click();
+                  }}
+                  className="mt-3 px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-medium flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload Image</span>
+                </button>
               </div>
             )}
             {attrs.prompt && (
@@ -728,6 +862,7 @@ export const EntityCard: React.FC<EntityCardProps> = ({
             )}
           </div>
         );
+      }
 
       case 'generic_list': {
         const listItems: string[] = Array.isArray(attrs.items)

@@ -426,6 +426,126 @@ describe('Scenario & Reactive Placement Store (Seam 2)', () => {
     expect(refreshed.entities[enemy.id].attributes.tactics).toContain('orc tactics');
     expect(refreshed.pages.find((p) => p.id === page2Id)?.title).toBe('orc Cave Page');
   });
+
+  it('moves page to a specific index via movePageToIndex', () => {
+    const store = useScenarioStore.getState();
+    const p1 = store.pages[0];
+    const p2 = store.createPage({ title: 'Page B' });
+    const p3 = store.createPage({ title: 'Page C' });
+
+    // Move Page C to index 0
+    store.movePageToIndex(p3.id, 0);
+    let state = useScenarioStore.getState();
+    expect(state.pages[0].id).toBe(p3.id);
+    expect(state.pages[0].pageNumber).toBe(1);
+    expect(state.pages[1].id).toBe(p1.id);
+    expect(state.pages[1].pageNumber).toBe(2);
+    expect(state.pages[2].id).toBe(p2.id);
+    expect(state.pages[2].pageNumber).toBe(3);
+
+    // Move Page C to index 2 (end)
+    store.movePageToIndex(p3.id, 2);
+    state = useScenarioStore.getState();
+    expect(state.pages[2].id).toBe(p3.id);
+    expect(state.pages[2].pageNumber).toBe(3);
+  });
+
+  it('duplicates a page and its placements', () => {
+    const store = useScenarioStore.getState();
+    const p1 = store.pages[0];
+    const item = createDefaultEntity(store.currentScenario!.id, 'item', 'Magic Ring');
+    store.addEntity(item);
+    store.addPlacement(p1.id, item.id, 0, 1);
+
+    const dup = store.duplicatePage(p1.id);
+    const state = useScenarioStore.getState();
+
+    expect(state.pages).toHaveLength(2);
+    expect(state.pages[1].id).toBe(dup.id);
+    expect(dup.title).toContain('(Copy)');
+    expect(state.activePageId).toBe(dup.id);
+
+    // Placements are duplicated with distinct IDs but same entityId
+    expect(state.placements[dup.id]).toHaveLength(1);
+    expect(state.placements[dup.id][0].entityId).toBe(item.id);
+    expect(state.placements[dup.id][0].id).not.toBe(state.placements[p1.id][0].id);
+  });
+
+  it('handles deletePage safely when deleting active page or last remaining page', () => {
+    const store = useScenarioStore.getState();
+    const p1 = store.pages[0];
+    const p2 = store.createPage({ title: 'Page Two' });
+
+    store.setActivePage(p2.id);
+    // Delete active page
+    store.deletePage(p2.id);
+
+    let state = useScenarioStore.getState();
+    expect(state.pages).toHaveLength(1);
+    expect(state.pages[0].id).toBe(p1.id);
+    expect(state.activePageId).toBe(p1.id);
+
+    // Delete the only remaining page -> creates a fresh fallback page
+    store.deletePage(p1.id);
+    state = useScenarioStore.getState();
+    expect(state.pages).toHaveLength(1);
+    expect(state.pages[0].pageNumber).toBe(1);
+    expect(state.activePageId).toBe(state.pages[0].id);
+  });
+
+  it('generates a Table of Contents page at the beginning of the scenario', () => {
+    const store = useScenarioStore.getState();
+    const p1 = store.pages[0];
+    const npc = createDefaultEntity(store.currentScenario!.id, 'npc', 'Dungeon Master Guide');
+    store.addEntity(npc);
+    store.addPlacement(p1.id, npc.id, 0, 1);
+
+    const p2 = store.createPage({ title: 'Crypt of Sorrows' });
+    const trap = createDefaultEntity(store.currentScenario!.id, 'trap', 'Poison Needle');
+    store.addEntity(trap);
+    store.addPlacement(p2.id, trap.id, 0, 1);
+
+    const tocPage = store.generateTableOfContentsPage();
+    const state = useScenarioStore.getState();
+
+    expect(state.pages[0].id).toBe(tocPage.id);
+    expect(state.pages[0].title).toBe('Table of Contents');
+    expect(state.activePageId).toBe(tocPage.id);
+
+    const tocPlacements = state.placements[tocPage.id];
+    expect(tocPlacements).toHaveLength(1);
+    const tocEntity = state.entities[tocPlacements[0].entityId];
+    expect(tocEntity).toBeDefined();
+    expect(tocEntity.entityType).toBe('generic_list');
+    expect((tocEntity.attributes.items as string[]).some((it) => it.includes('Crypt of Sorrows'))).toBe(true);
+  });
+
+  it('generates a Scenario Index (A-Z) page at the end of the scenario', () => {
+    const store = useScenarioStore.getState();
+    const p1 = store.pages[0];
+    const npc = createDefaultEntity(store.currentScenario!.id, 'npc', 'Alistar the Mage');
+    const boss = createDefaultEntity(store.currentScenario!.id, 'enemy', 'Zul the Lich');
+    store.addEntity(npc);
+    store.addEntity(boss);
+    store.addPlacement(p1.id, npc.id, 0, 1);
+    store.addPlacement(p1.id, boss.id, 0, 1);
+
+    const idxPage = store.generateIndexPage();
+    const state = useScenarioStore.getState();
+
+    expect(state.pages[state.pages.length - 1].id).toBe(idxPage.id);
+    expect(idxPage.title).toBe('Scenario Index');
+    expect(state.activePageId).toBe(idxPage.id);
+
+    const idxPlacements = state.placements[idxPage.id];
+    expect(idxPlacements).toHaveLength(1);
+    const idxEntity = state.entities[idxPlacements[0].entityId];
+    expect(idxEntity).toBeDefined();
+    expect(idxEntity.entityType).toBe('generic_list');
+    const items = idxEntity.attributes.items as string[];
+    expect(items.some((it) => it.includes('Alistar the Mage'))).toBe(true);
+    expect(items.some((it) => it.includes('Zul the Lich'))).toBe(true);
+  });
 });
 
 

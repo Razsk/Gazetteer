@@ -6,6 +6,7 @@ import { Entity } from '@/domain/entities';
 import { EntityCard } from './EntityCard';
 import { SortableEntityCard } from './SortableEntityCard';
 import { ThemeSkin } from './themeSkin';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import {
   DndContext,
   closestCenter,
@@ -34,7 +35,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Plus,
+  ArrowLeft,
+  ArrowRight,
+  Trash2,
+  Copy,
+  LayoutGrid,
 } from 'lucide-react';
+import { ConfirmDeletePageModal } from './ConfirmDeletePageModal';
 
 export function estimateEntityHeight(entity?: Entity, isCollapsed?: boolean): number {
   if (!entity) return 140;
@@ -111,16 +118,25 @@ export interface PageCanvasProps {
   page: Page;
   isPrintOnly?: boolean;
   isLast?: boolean;
+  onOpenPageOverview?: () => void;
+  onOpenToc?: () => void;
+  onOpenIndex?: () => void;
 }
 
 export const PageCanvas: React.FC<PageCanvasProps> = ({
   page,
   isPrintOnly = false,
   isLast = false,
+  onOpenPageOverview,
+  onOpenToc,
+  onOpenIndex,
 }) => {
   const store = useScenarioStore();
   const rawPlacements = store.placements[page.id] || [];
   const sortedPlacements = [...rawPlacements].sort((a, b) => a.displayOrder - b.displayOrder);
+
+  const isMobile = useIsMobile();
+  const isMobileSingleCol = !isPrintOnly && isMobile;
 
   const [mounted, setMounted] = useState(false);
   const [activePlacementId, setActivePlacementId] = useState<string | null>(null);
@@ -128,6 +144,7 @@ export const PageCanvas: React.FC<PageCanvasProps> = ({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(page.title || '');
   const [measuredHeights, setMeasuredHeights] = useState<Record<string, number>>({});
+  const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
 
   useEffect(() => {
     if (isPrintOnly) return;
@@ -228,7 +245,7 @@ export const PageCanvas: React.FC<PageCanvasProps> = ({
   };
 
   for (const p of sortedPlacements) {
-    if (page.columnCount === 1 || p.columnSpan === 2) {
+    if (isMobileSingleCol || page.columnCount === 1 || p.columnSpan === 2) {
       flushColPlacements();
       segments.push({ type: 'full', placement: p });
     } else {
@@ -407,7 +424,7 @@ export const PageCanvas: React.FC<PageCanvasProps> = ({
   return (
     <div className="flex flex-col items-center">
       {/* Top Page Toolbar & Navigation (no-print) */}
-      <div className="w-[210mm] max-w-full flex items-center justify-between pb-3 text-xs text-neutral-400 no-print gap-2 flex-wrap">
+      <div className="w-full max-w-[210mm] flex items-center justify-between pb-3 text-xs text-neutral-400 no-print gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           {/* Top Page Switcher Controls */}
           <div className="flex items-center bg-neutral-900 border border-neutral-800 rounded-md p-0.5">
@@ -439,6 +456,51 @@ export const PageCanvas: React.FC<PageCanvasProps> = ({
               title={nextPage ? `Next: Page ${nextPage.pageNumber} (${nextPage.title || 'Untitled'})` : 'Last page'}
             >
               <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Move Page Controls */}
+          <div
+            className="flex items-center bg-neutral-900 border border-neutral-800 rounded-md p-0.5 text-xs"
+            title="Move this page earlier or later in document"
+          >
+            <button
+              onClick={() => store.movePage(page.id, 'up')}
+              disabled={currentIndex === 0}
+              className={`p-1 rounded transition-colors ${
+                currentIndex === 0
+                  ? 'opacity-25 cursor-not-allowed text-neutral-600'
+                  : 'hover:bg-neutral-800 text-neutral-300 hover:text-white cursor-pointer'
+              }`}
+              title="Move page earlier (left)"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+            </button>
+
+            <select
+              value={currentIndex}
+              onChange={(e) => store.movePageToIndex(page.id, Number(e.target.value))}
+              className="bg-transparent text-neutral-300 text-[11px] px-1 py-0.5 focus:outline-none cursor-pointer"
+              title="Move page directly to position"
+            >
+              {Array.from({ length: totalPages }).map((_, i) => (
+                <option key={i} value={i} className="bg-neutral-900 text-white">
+                  Pos {i + 1}
+                </option>
+              ))}
+            </select>
+
+            <button
+              onClick={() => store.movePage(page.id, 'down')}
+              disabled={currentIndex === totalPages - 1}
+              className={`p-1 rounded transition-colors ${
+                currentIndex === totalPages - 1
+                  ? 'opacity-25 cursor-not-allowed text-neutral-600'
+                  : 'hover:bg-neutral-800 text-neutral-300 hover:text-white cursor-pointer'
+              }`}
+              title="Move page later (right)"
+            >
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -518,6 +580,43 @@ export const PageCanvas: React.FC<PageCanvasProps> = ({
             <span>Add Page</span>
           </button>
 
+          {/* Duplicate Page Shortcut */}
+          <button
+            onClick={() => store.duplicatePage(page.id)}
+            className="flex items-center gap-1 px-2 py-1 rounded bg-neutral-850 hover:bg-neutral-800 border border-neutral-700 hover:border-neutral-600 text-neutral-200 text-xs transition-colors cursor-pointer"
+            title="Duplicate this page and its placements"
+          >
+            <Copy className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Duplicate</span>
+          </button>
+
+          {/* Delete Page Button */}
+          <button
+            onClick={() => setIsConfirmDeleteOpen(true)}
+            disabled={totalPages <= 1}
+            className={`flex items-center gap-1 px-2 py-1 rounded border text-xs transition-colors ${
+              totalPages <= 1
+                ? 'opacity-25 cursor-not-allowed bg-neutral-900 border-neutral-800 text-neutral-600'
+                : 'bg-neutral-850 hover:bg-red-950/80 border-neutral-700 hover:border-red-800/60 text-neutral-300 hover:text-red-300 cursor-pointer'
+            }`}
+            title={totalPages <= 1 ? 'Cannot delete the only page' : 'Delete this page'}
+          >
+            <Trash2 className="w-3.5 h-3.5 text-red-400" />
+            <span>Delete</span>
+          </button>
+
+          {/* Page Overview Shortcut */}
+          {onOpenPageOverview && (
+            <button
+              onClick={onOpenPageOverview}
+              className="flex items-center gap-1 px-2 py-1 rounded bg-neutral-850 hover:bg-neutral-800 border border-neutral-700 hover:border-neutral-600 text-neutral-200 text-xs transition-colors cursor-pointer"
+              title="Open bird's-eye Page Overview"
+            >
+              <LayoutGrid className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Overview</span>
+            </button>
+          )}
+
           {/* Skin selector */}
           <div className="flex items-center gap-1 bg-neutral-900 border border-neutral-800 rounded px-1.5 py-0.5">
             <Palette className="w-3.5 h-3.5 text-neutral-400" />
@@ -540,11 +639,14 @@ export const PageCanvas: React.FC<PageCanvasProps> = ({
             title="Toggle between 1-column and 2-column page layout"
           >
             <Columns2 className="w-3.5 h-3.5" />
-            <span>{page.columnCount === 1 ? '1 Col' : '2 Col'}</span>
+            <span>
+              {page.columnCount === 1 ? '1 Col' : '2 Col'}
+              {isMobile && ' (Mobile: 1 Col)'}
+            </span>
           </button>
 
-          {/* Flow Mode Selector (Visible in 2-column mode) */}
-          {page.columnCount === 2 && (
+          {/* Flow Mode Selector (Visible in 2-column mode on desktop) */}
+          {page.columnCount === 2 && !isMobile && (
             <div
               className="flex items-center gap-1 bg-neutral-900 border border-neutral-800 rounded px-1.5 py-0.5"
               title="Card Flow Layout: Balanced (Masonry) packs cards to eliminate gaps and maximize space. Alternating maintains sequence across columns. Manual follows assigned columns."
@@ -566,7 +668,7 @@ export const PageCanvas: React.FC<PageCanvasProps> = ({
 
       {/* Physical Page Sheet (A4 dimensions: 210mm x 297mm) */}
       <div
-        className={`print-page relative w-[210mm] min-h-[297mm] p-[15mm] border transition-all duration-200 rounded-sm shadow-xl print:border-none print:shadow-none print:m-0 print:p-0 print:w-full print:bg-transparent ${
+        className={`print-page relative w-full max-w-[210mm] min-h-auto md:min-h-[297mm] p-3 sm:p-5 md:p-[15mm] border transition-all duration-200 rounded-sm shadow-xl print:border-none print:shadow-none print:m-0 print:p-0 print:w-full print:bg-transparent ${
           page.themeSkin === 'parchment'
             ? 'bg-[#f8f4e6] border-[#dfcfb0]'
             : page.themeSkin === 'gothic'
@@ -621,9 +723,9 @@ export const PageCanvas: React.FC<PageCanvasProps> = ({
                 }
 
                 return (
-                  <div key={`col-seg-${sIdx}`} className="flex gap-4 items-start w-full">
+                  <div key={`col-seg-${sIdx}`} className="flex flex-col md:flex-row gap-4 items-start w-full">
                     {/* Left Column */}
-                    <div className="flex-1 min-w-0 flex flex-col gap-4">
+                    <div className="w-full md:flex-1 min-w-0 flex flex-col gap-4">
                       {seg.leftPlacements.map((placement) => {
                         const entity = store.entities[placement.entityId];
                         if (!entity) return null;
@@ -650,7 +752,7 @@ export const PageCanvas: React.FC<PageCanvasProps> = ({
                     </div>
 
                     {/* Right Column */}
-                    <div className="flex-1 min-w-0 flex flex-col gap-4">
+                    <div className="w-full md:flex-1 min-w-0 flex flex-col gap-4">
                       {seg.rightPlacements.map((placement) => {
                         const entity = store.entities[placement.entityId];
                         if (!entity) return null;
@@ -699,9 +801,9 @@ export const PageCanvas: React.FC<PageCanvasProps> = ({
               {activePlacement && activeEntity ? (
                 <div
                   className={`cursor-grabbing opacity-95 transition-shadow ${
-                    page.columnCount === 1 || activePlacement.columnSpan === 2
-                      ? 'w-[180mm] max-w-full'
-                      : 'w-[88mm] max-w-full'
+                    isMobileSingleCol || page.columnCount === 1 || activePlacement.columnSpan === 2
+                      ? 'w-full max-w-[180mm]'
+                      : 'w-full max-w-[88mm]'
                   }`}
                 >
                   <EntityCard
@@ -718,7 +820,7 @@ export const PageCanvas: React.FC<PageCanvasProps> = ({
       </div>
 
       {/* Bottom Page Navigation (no-print) */}
-      <div className="w-[210mm] max-w-full flex items-center justify-between mt-6 pb-12 text-xs text-neutral-400 no-print border-t border-neutral-800/80 pt-4 gap-2 flex-wrap">
+      <div className="w-full max-w-[210mm] flex items-center justify-between mt-6 pb-28 md:pb-12 text-xs text-neutral-400 no-print border-t border-neutral-800/80 pt-4 gap-2 flex-wrap">
         {/* Previous Page Button */}
         <button
           onClick={handlePrevPage}
@@ -778,6 +880,16 @@ export const PageCanvas: React.FC<PageCanvasProps> = ({
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Confirm Delete Page Modal */}
+      <ConfirmDeletePageModal
+        isOpen={isConfirmDeleteOpen}
+        onClose={() => setIsConfirmDeleteOpen(false)}
+        onConfirm={() => store.deletePage(page.id)}
+        pageNumber={page.pageNumber}
+        pageTitle={page.title}
+        elementCount={sortedPlacements.length}
+      />
     </div>
   );
 };

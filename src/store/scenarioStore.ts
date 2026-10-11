@@ -90,6 +90,10 @@ export interface ScenarioStoreState {
   updatePage: (pageId: string, updates: Partial<Page>) => void;
   deletePage: (pageId: string) => void;
   movePage: (pageId: string, direction: 'up' | 'down') => void;
+  movePageToIndex: (pageId: string, targetIndex: number) => void;
+  duplicatePage: (pageId: string) => Page;
+  generateTableOfContentsPage: () => Page;
+  generateIndexPage: () => Page;
   reorderPages: (newPages: Page[]) => void;
   setActivePage: (pageId: string) => void;
   setScenarioMetadata: (meta: Partial<Scenario>) => void;
@@ -400,14 +404,42 @@ export const useScenarioStore = create<ScenarioStoreState>((set, get) => ({
 
   deletePage: (pageId: string) => {
     set((state) => {
+      const pageIndex = state.pages.findIndex((p) => p.id === pageId);
+      if (pageIndex === -1) return state;
+
       const remainingPages = state.pages.filter((p) => p.id !== pageId);
-      const renumbered = remainingPages.map((p, idx) => ({ ...p, pageNumber: idx + 1 }));
+      let finalPages = remainingPages;
+      let nextActiveId = state.activePageId;
+
+      if (finalPages.length === 0) {
+        const fallbackPage: Page = {
+          id: `page-${Date.now()}`,
+          scenarioId: state.currentScenario?.id || 'scen-default',
+          pageNumber: 1,
+          title: 'Page 1',
+          pageSize: 'A4',
+          columnCount: 2,
+          themeSkin: state.currentScenario?.defaultThemeSkin || 'parchment',
+          flowMode: 'balanced',
+        };
+        finalPages = [fallbackPage];
+        nextActiveId = fallbackPage.id;
+      } else if (state.activePageId === pageId) {
+        const newActiveIndex = Math.min(pageIndex, finalPages.length - 1);
+        nextActiveId = finalPages[newActiveIndex].id;
+      }
+
+      const renumbered = finalPages.map((p, idx) => ({ ...p, pageNumber: idx + 1 }));
       const newPlacements = { ...state.placements };
       delete newPlacements[pageId];
+      if (nextActiveId && !newPlacements[nextActiveId]) {
+        newPlacements[nextActiveId] = [];
+      }
+
       return {
         pages: renumbered,
         placements: newPlacements,
-        activePageId: state.activePageId === pageId ? (renumbered[0]?.id || null) : state.activePageId,
+        activePageId: nextActiveId,
       };
     });
   },
@@ -426,6 +458,197 @@ export const useScenarioStore = create<ScenarioStoreState>((set, get) => ({
       const renumbered = newPages.map((p, idx) => ({ ...p, pageNumber: idx + 1 }));
       return { pages: renumbered };
     });
+  },
+
+  movePageToIndex: (pageId: string, targetIndex: number) => {
+    set((state) => {
+      const index = state.pages.findIndex((p) => p.id === pageId);
+      if (index === -1) return state;
+      const clampedIndex = Math.max(0, Math.min(state.pages.length - 1, targetIndex));
+      if (index === clampedIndex) return state;
+
+      const newPages = [...state.pages];
+      const [moved] = newPages.splice(index, 1);
+      newPages.splice(clampedIndex, 0, moved);
+
+      const renumbered = newPages.map((p, idx) => ({ ...p, pageNumber: idx + 1 }));
+      return { pages: renumbered };
+    });
+  },
+
+  duplicatePage: (pageId: string) => {
+    const state = get();
+    const index = state.pages.findIndex((p) => p.id === pageId);
+    if (index === -1) return state.pages[0];
+
+    const sourcePage = state.pages[index];
+    const newPageId = `page-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const sourcePlacements = state.placements[pageId] || [];
+
+    const newPage: Page = {
+      ...sourcePage,
+      id: newPageId,
+      title: sourcePage.title ? `${sourcePage.title} (Copy)` : `Page ${index + 2}`,
+      pageNumber: index + 2,
+    };
+
+    const newPlacements: Placement[] = sourcePlacements.map((plc, pIdx) => ({
+      ...plc,
+      id: `plc-${Date.now()}-${pIdx}-${Math.random().toString(36).slice(2, 6)}`,
+      pageId: newPageId,
+      styleOverrides: { ...(plc.styleOverrides || {}) },
+    }));
+
+    const newPages = [...state.pages];
+    newPages.splice(index + 1, 0, newPage);
+    const renumbered = newPages.map((p, idx) => ({ ...p, pageNumber: idx + 1 }));
+
+    set({
+      pages: renumbered,
+      placements: {
+        ...state.placements,
+        [newPageId]: newPlacements,
+      },
+      activePageId: newPageId,
+    });
+
+    return newPage;
+  },
+
+  generateTableOfContentsPage: () => {
+    const state = get();
+    const scenario = state.currentScenario;
+    const scenarioId = scenario?.id || 'scen-default';
+
+    const tocItems: string[] = state.pages.map((p) => {
+      const plcs = state.placements[p.id] || [];
+      const entityNames = plcs
+        .map((plc) => state.entities[plc.entityId]?.name)
+        .filter(Boolean);
+      const entitySummary = entityNames.length > 0 ? ` — ${entityNames.join(', ')}` : '';
+      return `Page ${p.pageNumber}: ${p.title || 'Untitled'}${entitySummary}`;
+    });
+
+    const tocEntity = createDefaultEntity(scenarioId, 'generic_list', 'Table of Contents');
+    tocEntity.attributes = {
+      context: `Table of contents for ${scenario?.title || 'Gazetteer Scenario'}.`,
+      items: tocItems.length > 0 ? tocItems : ['No pages in scenario yet.'],
+    };
+
+    const newPageId = `page-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const newPage: Page = {
+      id: newPageId,
+      scenarioId,
+      pageNumber: 1,
+      title: 'Table of Contents',
+      pageSize: 'A4',
+      columnCount: 1,
+      themeSkin: scenario?.defaultThemeSkin || 'parchment',
+      flowMode: 'balanced',
+    };
+
+    const newPlacement: Placement = {
+      id: `plc-${Date.now()}-toc`,
+      pageId: newPageId,
+      entityId: tocEntity.id,
+      columnIndex: 0,
+      columnSpan: 1,
+      displayOrder: 0,
+      styleOverrides: {},
+    };
+
+    const newPages = [newPage, ...state.pages];
+    const renumbered = newPages.map((p, idx) => ({ ...p, pageNumber: idx + 1 }));
+
+    set({
+      pages: renumbered,
+      entities: {
+        ...state.entities,
+        [tocEntity.id]: tocEntity,
+      },
+      placements: {
+        ...state.placements,
+        [newPageId]: [newPlacement],
+      },
+      activePageId: newPageId,
+    });
+
+    return newPage;
+  },
+
+  generateIndexPage: () => {
+    const state = get();
+    const scenario = state.currentScenario;
+    const scenarioId = scenario?.id || 'scen-default';
+
+    const entityEntries = Object.values(state.entities);
+    const sorted = [...entityEntries].sort((a, b) => a.name.localeCompare(b.name));
+
+    const indexItems: string[] = sorted.map((ent) => {
+      const pageNumbers: number[] = [];
+      state.pages.forEach((p) => {
+        const plcs = state.placements[p.id] || [];
+        if (plcs.some((plc) => plc.entityId === ent.id)) {
+          pageNumbers.push(p.pageNumber);
+        }
+      });
+
+      const pagesStr = pageNumbers.length > 0
+        ? `Page ${pageNumbers.join(', ')}`
+        : 'Library (unplaced)';
+
+      const typeLabel = ent.entityType
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+
+      return `${ent.name} (${typeLabel}) — ${pagesStr}`;
+    });
+
+    const indexEntity = createDefaultEntity(scenarioId, 'generic_list', 'Scenario Index (A-Z)');
+    indexEntity.attributes = {
+      context: `Alphabetical index of all people, places, monsters, items, and hazards in ${scenario?.title || 'Gazetteer Scenario'}.`,
+      items: indexItems.length > 0 ? indexItems : ['No entities found.'],
+    };
+
+    const newPageId = `page-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const newPage: Page = {
+      id: newPageId,
+      scenarioId,
+      pageNumber: state.pages.length + 1,
+      title: 'Scenario Index',
+      pageSize: 'A4',
+      columnCount: 2,
+      themeSkin: scenario?.defaultThemeSkin || 'parchment',
+      flowMode: 'balanced',
+    };
+
+    const newPlacement: Placement = {
+      id: `plc-${Date.now()}-idx`,
+      pageId: newPageId,
+      entityId: indexEntity.id,
+      columnIndex: 0,
+      columnSpan: 2,
+      displayOrder: 0,
+      styleOverrides: {},
+    };
+
+    const newPages = [...state.pages, newPage];
+    const renumbered = newPages.map((p, idx) => ({ ...p, pageNumber: idx + 1 }));
+
+    set({
+      pages: renumbered,
+      entities: {
+        ...state.entities,
+        [indexEntity.id]: indexEntity,
+      },
+      placements: {
+        ...state.placements,
+        [newPageId]: [newPlacement],
+      },
+      activePageId: newPageId,
+    });
+
+    return newPage;
   },
 
   reorderPages: (newPages: Page[]) => {

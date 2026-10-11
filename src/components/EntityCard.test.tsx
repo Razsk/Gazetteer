@@ -724,6 +724,67 @@ describe('EntityCard Area/Room contents rendering', () => {
     expect(screen.getByText('Connected Locations:')).toBeInTheDocument();
     expect(screen.getByText('The Shattered Nave, The Cataract Churn')).toBeInTheDocument();
   });
+
+  it('renders image module placeholder with drag-and-drop dropzone and upload button', () => {
+    const imageEntity: Entity = {
+      id: 'img-1',
+      scenarioId: 'scen-1',
+      entityType: 'image',
+      name: 'Catacomb Map',
+      attributes: {
+        assetUrl: null,
+        prompt: 'Moody hand-drawn map of catacombs',
+        caption: 'Figure 1: Catacomb Entrances',
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    render(
+      <EntityCard
+        placement={mockPlacement}
+        entity={imageEntity}
+        pageSkin="parchment"
+      />
+    );
+
+    // Verify placeholder drag-and-drop and upload prompts
+    expect(screen.getByText(/Drag & drop image here/i)).toBeInTheDocument();
+    expect(screen.getByText(/or click to upload from device/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /upload image/i })).toBeInTheDocument();
+
+    // Verify prompt and caption
+    expect(screen.getByText('Moody hand-drawn map of catacombs')).toBeInTheDocument();
+    expect(screen.getByText('Figure 1: Catacomb Entrances')).toBeInTheDocument();
+  });
+
+  it('renders image module with image and hover upload button', () => {
+    const imageEntity: Entity = {
+      id: 'img-2',
+      scenarioId: 'scen-1',
+      entityType: 'image',
+      name: 'Ancient Shrine',
+      attributes: {
+        assetUrl: 'https://example.com/shrine.png',
+        caption: 'Shrine of the Forgotten God',
+        prompt: 'Ancient stone idol covered in moss',
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    render(
+      <EntityCard
+        placement={mockPlacement}
+        entity={imageEntity}
+        pageSkin="parchment"
+      />
+    );
+
+    const img = screen.getByRole('img');
+    expect(img).toHaveAttribute('src', 'https://example.com/shrine.png');
+    expect(screen.getByText('Upload New')).toBeInTheDocument();
+  });
 });
 
 

@@ -291,4 +291,55 @@ describe('EditEntityModal Trap Fields', () => {
     ]);
     expect(updated.attributes.connectedLocations).toBe('Surface Sinkhole Rim, The Leviathan Rib-Walks');
   });
+
+  it('displays the size and ratio of the image in the edit element UI', () => {
+    const store = useScenarioStore.getState();
+    const imageEntity: Entity = {
+      id: 'img-test-1',
+      scenarioId: store.currentScenario?.id || 'scen-1',
+      entityType: 'image',
+      name: 'Sunken Catacombs Map',
+      attributes: {
+        assetUrl: 'https://example.com/map.png',
+        caption: 'Lower Crypt Floorplan',
+        prompt: 'Isometric dungeon layout',
+        width: 1920,
+        height: 1080,
+        fileSize: 524288,
+        aspectRatio: '16:9',
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    useScenarioStore.setState({
+      entities: {
+        ...store.entities,
+        [imageEntity.id]: imageEntity,
+      },
+    });
+
+    render(
+      <EditEntityModal
+        entityId={imageEntity.id}
+        isOpen={true}
+        onClose={() => {}}
+      />
+    );
+
+    // Verify Size display: width x height and file size
+    const sizeDisplay = screen.getByTestId('image-size-display');
+    expect(sizeDisplay).toBeInTheDocument();
+    expect(sizeDisplay.textContent).toContain('1920 × 1080 px');
+    expect(screen.getByText('512.0 KB')).toBeInTheDocument();
+
+    // Verify Ratio display: aspect ratio and label
+    const ratioDisplay = screen.getByTestId('image-ratio-display');
+    expect(ratioDisplay).toBeInTheDocument();
+    expect(ratioDisplay.textContent).toContain('16:9');
+    expect(screen.getByText('Widescreen')).toBeInTheDocument();
+
+    // Verify image preview and upload dropzone
+    expect(screen.getByText(/Drag & drop image here, or browse to upload/i)).toBeInTheDocument();
+  });
 });

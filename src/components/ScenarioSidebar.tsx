@@ -1,12 +1,50 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useScenarioStore } from '@/store/scenarioStore';
+import { useScenarioStore, Page } from '@/store/scenarioStore';
 import { EntityType, createDefaultEntity } from '@/domain/entities';
 import { getEntityIcon, getEventListIcon } from './themeSkin';
-import { Plus, BookOpen, Layers, Settings, ChevronUp, ChevronDown, Pencil, Check, Download, Upload, RotateCcw, BookPlus, Sparkles } from 'lucide-react';
+import {
+  Plus,
+  BookOpen,
+  Layers,
+  Settings,
+  ChevronUp,
+  ChevronDown,
+  Pencil,
+  Check,
+  Download,
+  Upload,
+  RotateCcw,
+  BookPlus,
+  Sparkles,
+  LayoutGrid,
+  Hash,
+  Trash2,
+  Copy,
+  GripVertical,
+  X,
+} from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { EditEntityModal } from './EditEntityModal';
 import { NewScenarioModal } from './NewScenarioModal';
+import { ConfirmDeletePageModal } from './ConfirmDeletePageModal';
 
 interface PaletteTypeItem {
   type: EntityType;
@@ -61,16 +99,244 @@ const ENTITY_CATEGORIES: {
 
 export interface ScenarioSidebarProps {
   onOpenAiGenerateModal?: () => void;
+  onOpenPageOverview?: () => void;
+  onOpenToc?: () => void;
+  onOpenIndex?: () => void;
+  isOpenMobile?: boolean;
+  onCloseMobile?: () => void;
+  initialTab?: 'elements' | 'pages' | 'settings';
 }
 
-export const ScenarioSidebar: React.FC<ScenarioSidebarProps> = ({ onOpenAiGenerateModal }) => {
+interface SortableSidebarPageRowProps {
+  page: Page;
+  index: number;
+  total: number;
+  isActive: boolean;
+  isEditing: boolean;
+  editingTitle: string;
+  count: number;
+  onStartRename: () => void;
+  onSaveRename: () => void;
+  onChangeEditingTitle: (val: string) => void;
+  onCancelRename: () => void;
+  onSelect: () => void;
+  onDuplicate: () => void;
+  onDeleteRequest: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onMoveToIndex: (targetIdx: number) => void;
+}
+
+const SortableSidebarPageRow: React.FC<SortableSidebarPageRowProps> = ({
+  page,
+  index,
+  total,
+  isActive,
+  isEditing,
+  editingTitle,
+  count,
+  onStartRename,
+  onSaveRename,
+  onChangeEditingTitle,
+  onCancelRename,
+  onSelect,
+  onDuplicate,
+  onDeleteRequest,
+  onMoveUp,
+  onMoveDown,
+  onMoveToIndex,
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: page.id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.35 : 1,
+    zIndex: isDragging ? 20 : 'auto',
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      onClick={onSelect}
+      className={`group flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+        isActive
+          ? 'bg-indigo-950/40 border-indigo-500 text-white shadow-sm'
+          : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:border-neutral-700'
+      }`}
+    >
+      {/* Drag grip handle */}
+      <button
+        {...attributes}
+        {...listeners}
+        onClick={(e) => e.stopPropagation()}
+        className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-neutral-500 hover:text-neutral-300 rounded hover:bg-neutral-800 shrink-0"
+        title="Drag to reorder page"
+      >
+        <GripVertical className="w-3.5 h-3.5" />
+      </button>
+
+      <div className="flex-1 min-w-0 px-1.5">
+        {isEditing ? (
+          <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <span className="font-semibold text-neutral-400">P{page.pageNumber}:</span>
+            <input
+              type="text"
+              value={editingTitle}
+              onChange={(e) => onChangeEditingTitle(e.target.value)}
+              onBlur={onSaveRename}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onSaveRename();
+                if (e.key === 'Escape') onCancelRename();
+              }}
+              autoFocus
+              className="flex-1 px-1.5 py-0.5 text-xs bg-black/60 border border-indigo-400 rounded text-white focus:outline-none"
+            />
+            <button
+              onClick={onSaveRename}
+              className="p-1 rounded hover:bg-neutral-800 text-emerald-400 cursor-pointer"
+              title="Save name"
+            >
+              <Check className="w-3 h-3" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <span className="font-semibold truncate">Page {page.pageNumber}: {page.title || 'Untitled'}</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartRename();
+              }}
+              className="opacity-0 group-hover:opacity-60 hover:opacity-100 p-0.5 rounded text-neutral-400 hover:text-white transition-opacity cursor-pointer"
+              title="Rename page"
+            >
+              <Pencil className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+        <div className="text-[10px] text-neutral-400 mt-0.5 flex items-center gap-1.5">
+          <span>{count} {count === 1 ? 'element' : 'elements'}</span>
+          <span>•</span>
+          <span>{page.columnCount} Col</span>
+          <span>•</span>
+          <span className="capitalize">{page.themeSkin}</span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+        {/* Reordering Up/Down controls */}
+        <div className="flex flex-col opacity-60 group-hover:opacity-100 transition-opacity">
+          <button
+            disabled={index === 0}
+            onClick={onMoveUp}
+            className={`p-0.5 rounded hover:bg-neutral-800 ${
+              index === 0 ? 'opacity-20 cursor-not-allowed' : 'text-neutral-300 hover:text-white cursor-pointer'
+            }`}
+            title="Move page up"
+          >
+            <ChevronUp className="w-3 h-3" />
+          </button>
+          <button
+            disabled={index === total - 1}
+            onClick={onMoveDown}
+            className={`p-0.5 rounded hover:bg-neutral-800 ${
+              index === total - 1 ? 'opacity-20 cursor-not-allowed' : 'text-neutral-300 hover:text-white cursor-pointer'
+            }`}
+            title="Move page down"
+          >
+            <ChevronDown className="w-3 h-3" />
+          </button>
+        </div>
+
+        {/* Move to Position Dropdown */}
+        <select
+          value={index}
+          onChange={(e) => onMoveToIndex(Number(e.target.value))}
+          className="bg-neutral-900 border border-neutral-800 rounded px-1 py-0.5 text-[9px] text-neutral-400 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100 cursor-pointer"
+          title="Move directly to page position"
+        >
+          {Array.from({ length: total }).map((_, i) => (
+            <option key={i} value={i} className="bg-neutral-900 text-white">
+              P{i + 1}
+            </option>
+          ))}
+        </select>
+
+        {/* Duplicate page */}
+        <button
+          onClick={onDuplicate}
+          className="opacity-0 group-hover:opacity-80 hover:opacity-100 p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-indigo-300 transition-all cursor-pointer"
+          title="Duplicate page"
+        >
+          <Copy className="w-3 h-3" />
+        </button>
+
+        {/* Delete page */}
+        <button
+          onClick={onDeleteRequest}
+          disabled={total <= 1}
+          className={`p-1 rounded transition-colors ${
+            total <= 1
+              ? 'opacity-20 cursor-not-allowed text-neutral-600'
+              : 'text-neutral-500 hover:text-red-400 hover:bg-red-950/40 cursor-pointer'
+          }`}
+          title={total <= 1 ? 'Cannot delete the only page' : 'Delete page'}
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export const ScenarioSidebar: React.FC<ScenarioSidebarProps> = ({
+  onOpenAiGenerateModal,
+  onOpenPageOverview,
+  onOpenToc,
+  onOpenIndex,
+  isOpenMobile = false,
+  onCloseMobile,
+  initialTab,
+}) => {
   const store = useScenarioStore();
   const [activeTab, setActiveTab] = useState<'elements' | 'pages' | 'settings'>('elements');
+
+  React.useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   const [editingPageId, setEditingPageId] = useState<string | null>(null);
   const [editingPageTitle, setEditingPageTitle] = useState('');
   const [editingEntityModalId, setEditingEntityModalId] = useState<string | null>(null);
   const [isNewScenarioModalOpen, setIsNewScenarioModalOpen] = useState(false);
+  const [pageToDelete, setPageToDelete] = useState<Page | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const pageSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handlePageDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = store.pages.findIndex((p) => p.id === active.id);
+    const newIndex = store.pages.findIndex((p) => p.id === over.id);
+    if (oldIndex !== -1 && newIndex !== -1) {
+      const reordered = arrayMove(store.pages, oldIndex, newIndex);
+      store.reorderPages(reordered);
+    }
+  };
 
   const handleStartRenamePage = (pageId: string, currentTitle: string) => {
     setEditingPageId(pageId);
@@ -158,23 +424,49 @@ export const ScenarioSidebar: React.FC<ScenarioSidebarProps> = ({ onOpenAiGenera
   const allEntitiesList = Object.values(store.entities);
 
   return (
-    <aside className="w-80 bg-[#16181d] border-r border-neutral-800 flex flex-col h-full no-print">
-      {/* Scenario Header */}
-      <div className="p-4 border-b border-neutral-800 bg-[#1b1e24]">
-        <div className="flex items-center gap-2 mb-1">
-          <BookOpen className="w-5 h-5 text-indigo-400" />
-          <h1 className="font-bold text-sm text-neutral-100 truncate">
-            {store.currentScenario?.title || 'Gazetteer Scenario'}
-          </h1>
+    <>
+      {/* Mobile Backdrop Overlay */}
+      {isOpenMobile && (
+        <div
+          data-testid="sidebar-mobile-backdrop"
+          onClick={onCloseMobile}
+          className="fixed inset-0 bg-black/70 backdrop-blur-xs z-40 md:hidden animate-in fade-in duration-200"
+        />
+      )}
+
+      <aside
+        data-testid="scenario-sidebar"
+        className={`fixed inset-y-0 left-0 z-50 w-[85vw] max-w-sm md:static md:w-80 md:z-auto bg-[#16181d] border-r border-neutral-800 flex flex-col h-full no-print shadow-2xl md:shadow-none transition-transform duration-300 ease-in-out ${
+          isOpenMobile ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        }`}
+      >
+        {/* Scenario Header */}
+        <div className="p-4 border-b border-neutral-800 bg-[#1b1e24] flex items-center justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <BookOpen className="w-5 h-5 text-indigo-400 shrink-0" />
+              <h1 className="font-bold text-sm text-neutral-100 truncate">
+                {store.currentScenario?.title || 'Gazetteer Scenario'}
+              </h1>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] text-neutral-400">
+              <span>{store.currentScenario?.ruleset}</span>
+              <span>•</span>
+              <span>Lvl {store.currentScenario?.targetPartyLevel}</span>
+              <span>•</span>
+              <span className="truncate">{store.currentScenario?.theme}</span>
+            </div>
+          </div>
+
+          {/* Close button for mobile drawer */}
+          <button
+            onClick={onCloseMobile}
+            className="md:hidden p-1.5 ml-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+            title="Close sidebar"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-neutral-400">
-          <span>{store.currentScenario?.ruleset}</span>
-          <span>•</span>
-          <span>Lvl {store.currentScenario?.targetPartyLevel}</span>
-          <span>•</span>
-          <span className="truncate">{store.currentScenario?.theme}</span>
-        </div>
-      </div>
 
       {/* Tabs */}
       <div className="flex border-b border-neutral-800 text-xs font-medium text-neutral-400 bg-[#131519]">
@@ -323,9 +615,43 @@ export const ScenarioSidebar: React.FC<ScenarioSidebarProps> = ({ onOpenAiGenera
 
         {activeTab === 'pages' && (
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            {/* Quick Navigation Ribbon */}
+            <div className="grid grid-cols-3 gap-1 p-1 bg-[#121418] border border-neutral-800 rounded-lg text-xs">
+              <button
+                type="button"
+                onClick={onOpenPageOverview}
+                className="flex items-center justify-center gap-1.5 py-1.5 rounded bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800 transition-colors cursor-pointer text-[11px] font-medium"
+                title="Open bird's-eye Page Overview gallery"
+              >
+                <LayoutGrid className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Overview</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onOpenToc}
+                className="flex items-center justify-center gap-1.5 py-1.5 rounded bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800 transition-colors cursor-pointer text-[11px] font-medium"
+                title="View Table of Contents"
+              >
+                <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+                <span>TOC</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onOpenIndex}
+                className="flex items-center justify-center gap-1.5 py-1.5 rounded bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800 transition-colors cursor-pointer text-[11px] font-medium"
+                title="View Scenario Index (A-Z)"
+              >
+                <Hash className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Index</span>
+              </button>
+            </div>
+
+            {/* Header with Page Count & Add Page Actions */}
+            <div className="flex items-center justify-between pt-1">
               <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
-                Pages Overview
+                Pages ({store.pages.length})
               </span>
               <div className="flex items-center gap-1.5">
                 {onOpenAiGenerateModal && (
@@ -339,121 +665,52 @@ export const ScenarioSidebar: React.FC<ScenarioSidebarProps> = ({ onOpenAiGenera
                 )}
                 <button
                   onClick={() => store.createPage()}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold cursor-pointer"
+                  className="flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold cursor-pointer shadow-sm shadow-indigo-950"
                 >
                   <Plus className="w-3.5 h-3.5" /> Add Page
                 </button>
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              {store.pages.map((p, idx) => {
-                const isActive = store.activePageId === p.id;
-                const count = (store.placements[p.id] || []).length;
-                const isEditing = editingPageId === p.id;
-
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => store.setActivePage(p.id)}
-                    className={`group flex items-center justify-between p-2.5 rounded-lg border text-xs cursor-pointer transition-all ${
-                      isActive
-                        ? 'bg-indigo-950/40 border-indigo-500 text-white'
-                        : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:border-neutral-700'
-                    }`}
-                  >
-                    <div className="flex-1 min-w-0 pr-2">
-                      {isEditing ? (
-                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          <span className="font-semibold text-neutral-400">P{p.pageNumber}:</span>
-                          <input
-                            type="text"
-                            value={editingPageTitle}
-                            onChange={(e) => setEditingPageTitle(e.target.value)}
-                            onBlur={() => handleSaveRenamePage(p.id)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleSaveRenamePage(p.id);
-                              if (e.key === 'Escape') setEditingPageId(null);
-                            }}
-                            autoFocus
-                            className="flex-1 px-1.5 py-0.5 text-xs bg-black/60 border border-indigo-400 rounded text-white focus:outline-none"
-                          />
-                          <button
-                            onClick={() => handleSaveRenamePage(p.id)}
-                            className="p-1 rounded hover:bg-neutral-800 text-emerald-400"
-                            title="Save name"
-                          >
-                            <Check className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-semibold truncate">Page {p.pageNumber}: {p.title}</span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleStartRenamePage(p.id, p.title || '');
-                            }}
-                            className="opacity-0 group-hover:opacity-60 hover:opacity-100 p-0.5 rounded text-neutral-400 hover:text-white transition-opacity"
-                            title="Rename page"
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )}
-                      <div className="text-[10px] text-neutral-400 mt-0.5">
-                        {count} elements • {p.columnCount} Col • {p.themeSkin}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      {/* Reordering Up/Down controls */}
-                      <div className="flex flex-col opacity-60 group-hover:opacity-100 transition-opacity">
-                        <button
-                          disabled={idx === 0}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            store.movePage(p.id, 'up');
-                          }}
-                          className={`p-0.5 rounded hover:bg-neutral-800 ${
-                            idx === 0 ? 'opacity-20 cursor-not-allowed' : 'text-neutral-300 hover:text-white'
-                          }`}
-                          title="Move page up"
-                        >
-                          <ChevronUp className="w-3 h-3" />
-                        </button>
-                        <button
-                          disabled={idx === store.pages.length - 1}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            store.movePage(p.id, 'down');
-                          }}
-                          className={`p-0.5 rounded hover:bg-neutral-800 ${
-                            idx === store.pages.length - 1 ? 'opacity-20 cursor-not-allowed' : 'text-neutral-300 hover:text-white'
-                          }`}
-                          title="Move page down"
-                        >
-                          <ChevronDown className="w-3 h-3" />
-                        </button>
-                      </div>
-
-                      {store.pages.length > 1 && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            store.deletePage(p.id);
-                          }}
-                          className="text-neutral-500 hover:text-red-400 p-1 ml-1"
-                          title="Delete page"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            {/* Drag & Drop Sortable Pages List */}
+            <DndContext
+              sensors={pageSensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handlePageDragEnd}
+            >
+              <SortableContext
+                items={store.pages.map((p) => p.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-1.5">
+                  {store.pages.map((p, idx) => (
+                    <SortableSidebarPageRow
+                      key={p.id}
+                      page={p}
+                      index={idx}
+                      total={store.pages.length}
+                      isActive={store.activePageId === p.id}
+                      isEditing={editingPageId === p.id}
+                      editingTitle={editingPageTitle}
+                      count={(store.placements[p.id] || []).length}
+                      onStartRename={() => handleStartRenamePage(p.id, p.title || '')}
+                      onSaveRename={() => handleSaveRenamePage(p.id)}
+                      onChangeEditingTitle={(val) => setEditingPageTitle(val)}
+                      onCancelRename={() => setEditingPageId(null)}
+                      onSelect={() => {
+                        store.setActivePage(p.id);
+                        onCloseMobile?.();
+                      }}
+                      onDuplicate={() => store.duplicatePage(p.id)}
+                      onDeleteRequest={() => setPageToDelete(p)}
+                      onMoveUp={() => store.movePage(p.id, 'up')}
+                      onMoveDown={() => store.movePage(p.id, 'down')}
+                      onMoveToIndex={(targetIdx) => store.movePageToIndex(p.id, targetIdx)}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
           </div>
         )}
 
@@ -577,6 +834,22 @@ export const ScenarioSidebar: React.FC<ScenarioSidebarProps> = ({ onOpenAiGenera
         isOpen={isNewScenarioModalOpen}
         onClose={() => setIsNewScenarioModalOpen(false)}
       />
+
+      {/* Confirm Delete Page Modal */}
+      {pageToDelete && (
+        <ConfirmDeletePageModal
+          isOpen={!!pageToDelete}
+          onClose={() => setPageToDelete(null)}
+          onConfirm={() => {
+            store.deletePage(pageToDelete.id);
+            setPageToDelete(null);
+          }}
+          pageNumber={pageToDelete.pageNumber}
+          pageTitle={pageToDelete.title}
+          elementCount={(store.placements[pageToDelete.id] || []).length}
+        />
+      )}
     </aside>
+    </>
   );
 };
